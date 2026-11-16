@@ -1,0 +1,43 @@
+pragma cashscript ^0.13.0;
+
+// Loan contract, which holds the BCH collateral for the loan
+// Always tied to a tokensidecar and a loanContractFunction
+
+// LoanTokenId (the tokenid of the loankey) state is offloaded to loanTokenSidecar by keeping an NFT with the loanTokenId
+// LoanContractFunctions are responsible for the contract logic managing the loan state & the BCH collateral
+
+/*  --- State Mutable NFT (10 items, 27 bytes) ---
+    byte identifier == 0x01
+    bytes6 borrowedTokenAmount (tokens)
+    bytes6 amountBeingRedeemed (tokens)
+    byte status (0x00 newLoan, 0x01 single period, 0x02 mature loan)
+    bytes4 lastPeriodInterestPaid
+    byte2 currentInterestRate
+    byte2 nextInterestRate
+    byte interestManager
+    bytes2 minRateManager
+    bytes2 maxRateManager
+*/
+
+// InterestManager 0x00 means no interest manager is assigned
+// Other interestManager values can be used to delegate interest management to a 3rd party 
+
+contract Loan(
+  ) {
+    function interact(){
+      // Authenticate loanTokenSidecar
+      int sidecarInputIndex = this.activeInputIndex + 1;
+      require(tx.inputs[sidecarInputIndex].outpointTransactionHash == tx.inputs[this.activeInputIndex].outpointTransactionHash);
+      require(tx.inputs[sidecarInputIndex].outpointIndex == tx.inputs[this.activeInputIndex].outpointIndex + 1);
+
+      // Authenticate Loancontract function
+      // Loan contract functions are identified by paryonTokenId + a commitment of a single byte
+      bytes32 paryonTokenId = tx.inputs[this.activeInputIndex].tokenCategory.split(32)[0];
+      int nftFunctionInputIndex = this.activeInputIndex + 2;
+      require(tx.inputs[nftFunctionInputIndex].tokenCategory == paryonTokenId);
+      bytes commitmentNftFunction = tx.inputs[nftFunctionInputIndex].nftCommitment;
+      require(commitmentNftFunction.length == 1);
+      // The mutable capability of the loan NFT must be protected by the loan contract functions.
+      // Because loans are not always self-replicating, no lockingBytecode is pinned on the function NFT input.
+    }
+}

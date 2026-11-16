@@ -4,3 +4,5 @@ dist
 *.wif
 .taste-skill/chrome-*
 shots/
+
+.claude.claude/worktrees
