@@ -1,0 +1,6 @@
+node_modules
+dist
+.env
+*.wif
+.taste-skill/chrome-*
+shots/

@@ -1,0 +1,15 @@
+{
+  "name": "@sigsig/oracle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": { "test": "vitest run --passWithNoTests", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "cashscript": "^0.13.0",
+    "@bitauth/libauth": "^3.0.0",
+    "@sigsig/core": "workspace:*"
+  },
+  "devDependencies": { "cashc": "0.13.3" }
+}
