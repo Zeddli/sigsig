@@ -38,6 +38,9 @@ importers:
       cashc:
         specifier: 0.13.3
         version: 0.13.3
+      libauth-vm2026:
+        specifier: npm:@bitauth/libauth@3.1.0-next.8
+        version: '@bitauth/libauth@3.1.0-next.8'
 
   packages/keeper:
     dependencies:
