@@ -91,3 +91,19 @@ export function tone(status: Health['status']): 'safe' | 'watch' | 'danger' {
   if (status === 'watch') return 'watch';
   return 'safe';
 }
+
+/** PUSD cents -> sats of value at a price (cents per BCH), rounded up exactly like Vault.pay. */
+export function centsToSats(cents: bigint, priceCents: bigint): bigint {
+  if (priceCents <= 0n) return 0n;
+  return (cents * SATS + priceCents - 1n) / priceCents;
+}
+
+/** sats -> PUSD cents at a price, rounded down (for "≈" display only). */
+export function satsToCents(n: bigint, priceCents: bigint): bigint {
+  return (n * priceCents) / SATS;
+}
+
+/** Spending limits are stored in sats of value (the covenant's unit); show both. "50,000 sats (≈ 27.00 PUSD)" */
+export function limit(n: bigint, priceCents: bigint): string {
+  return `${sats(n)} (≈ ${pusd(satsToCents(n, priceCents))} PUSD)`;
+}

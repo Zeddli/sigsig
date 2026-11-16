@@ -6,7 +6,7 @@ import { PageHead, ErrorLine } from '../components/AppShell';
 import { DecodedTxView } from '../components/DecodedTxView';
 import { Addr } from '../components/Copy';
 import { useWallet } from '../wallet';
-import { bch, crBps, maxBorrow, parsePusd, pct, pusd } from '../data/format';
+import { bch, centsToSats, crBps, maxBorrow, parsePusd, pct, pusd } from '../data/format';
 import { EXPLORER } from '../config/app';
 
 const STEPS: { id: SetupStep; label: string }[] = [
@@ -133,6 +133,7 @@ export function NewVault() {
                 <div className="field"><label htmlFor={`${fid}-db`}>Daily budget (PUSD)</label>
                   <input id={`${fid}-db`} inputMode="decimal" defaultValue={pusd(d.dailyBudgetCents)} onChange={(e) => { const c = parsePusd(e.target.value); if (c !== null) set({ dailyBudgetCents: c }); }} /></div>
               </div>
+              <p className="t-small muted">Limits are fixed in BCH value when the vault is created: {pusd(d.perPaymentMaxCents)} PUSD is {centsToSats(d.perPaymentMaxCents, PRICE).toLocaleString('en')} sats per payment and {pusd(d.dailyBudgetCents)} PUSD is {centsToSats(d.dailyBudgetCents, PRICE).toLocaleString('en')} sats a day at {pusd(PRICE)} per BCH. PUSD payments are valued at the oracle price.</p>
             </fieldset>
             <fieldset className="s-fieldset">
               <legend>Payees <span className="muted">{d.payees.length} of 8</span></legend>

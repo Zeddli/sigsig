@@ -17,7 +17,7 @@ import type {
   VaultSummary,
   VaultView,
 } from './source';
-import { bch, crBps, liquidationPrice, maxBorrow, pct, pusd, statusFor } from './format';
+import { bch, centsToSats, crBps, limit, liquidationPrice, maxBorrow, pct, pusd, sats, statusFor } from './format';
 
 const PRICE_CENTS = 54_012n; // $540.12 per BCH, the mock oracle's last message
 const PUSD_CATEGORY = '0c4a8e0b7f8f3b8f0d2a6b1e3c5d7f9a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e';
@@ -85,11 +85,12 @@ function policyFor(s: Seed): VaultPolicy {
     skimCrBps: 20_000,
     keeperFeeMaxSats: 20_000,
     payeeRoot: hex(`root-${s.id}`, 20),
-    perPaymentMax: 5_000n,  // PUSD cents (50.00 PUSD); see TODO in WALLET.md/README about the unit
-    dailyBudget: 10_000n,   // 100.00 PUSD
+    // limits are sats of value, as in Vault.pay (PUSD payments are valued at the oracle price)
+    perPaymentMax: centsToSats(5_000n, PRICE_CENTS),  // ≈ 50.00 PUSD
+    dailyBudget: centsToSats(10_000n, PRICE_CENTS),   // ≈ 100.00 PUSD
     dayIndex: 6_669,
-    spentToday: 0n,
     ...s.policy,
+    spentToday: centsToSats(s.policy.spentToday ?? 0n, PRICE_CENTS),
   };
 }
 
@@ -181,10 +182,12 @@ function payTx(v: VaultView, payeeIndex: number, amount: bigint): BuiltTx {
       tokenCategory: PUSD_CATEGORY, tokenAmount: v.buffer.pusdCents - amount },
   ];
   const left = v.policy.dailyBudget - v.policy.spentToday;
+  const px = v.health.priceCentsPerBch;
+  const amountSats = centsToSats(amount, px);
   const checks: PolicyCheck[] = [
     { id: 'allowlist', ok: true, text: 'Payee in allowlist' },
-    { id: 'per-payment', ok: amount <= v.policy.perPaymentMax, text: `≤ ${pusd(v.policy.perPaymentMax)} PUSD per payment` },
-    { id: 'budget', ok: amount <= left, text: `Budget ${pusd(left)} → ${pusd(left - amount)} PUSD` },
+    { id: 'per-payment', ok: amountSats <= v.policy.perPaymentMax, text: `${sats(amountSats)} ≤ ${limit(v.policy.perPaymentMax, px)} per payment` },
+    { id: 'budget', ok: amountSats <= left, text: `Budget left ${limit(left, px)} → ${limit(left - amountSats, px)}` },
     { id: 'cr', ok: true, text: `CR unchanged ${pct(v.health.crBps)}` },
   ];
   const title = `Pay ${pusd(amount)} PUSD to ${payee.label}`;
@@ -386,16 +389,18 @@ export function createMockSource(): DataSource {
     if (!v) return [];
     const payee = v.payees[d.payeeIndex];
     const left = v.policy.dailyBudget - v.policy.spentToday;
+    const px = v.health.priceCentsPerBch;
+    const amt = centsToSats(d.amountCents, px); // the covenant values PUSD at the oracle price, in sats
     return [
       { id: 'allowlist', ok: !!payee, text: payee ? 'Allowed payee' : 'Pick a payee from the allowlist' },
-      { id: 'per-payment', ok: d.amountCents > 0n && d.amountCents <= v.policy.perPaymentMax,
-        text: d.amountCents > v.policy.perPaymentMax
-          ? `Over the per-payment limit: ${pusd(d.amountCents)} > ${pusd(v.policy.perPaymentMax)} PUSD`
-          : `≤ per payment ${pusd(v.policy.perPaymentMax)} PUSD` },
-      { id: 'budget', ok: d.amountCents <= left,
-        text: d.amountCents > left
-          ? `Over today's budget: ${pusd(left)} PUSD left`
-          : `Budget left today ${pusd(left)} → ${pusd(left - d.amountCents)} PUSD` },
+      { id: 'per-payment', ok: d.amountCents > 0n && amt <= v.policy.perPaymentMax,
+        text: amt > v.policy.perPaymentMax
+          ? `Over the per-payment limit: ${sats(amt)} > ${limit(v.policy.perPaymentMax, px)}`
+          : `≤ per payment ${limit(v.policy.perPaymentMax, px)}` },
+      { id: 'budget', ok: amt <= left,
+        text: amt > left
+          ? `Over today's budget: ${limit(left, px)} left`
+          : `Budget left today ${limit(left, px)} → ${limit(left - amt, px)}` },
       { id: 'buffer', ok: d.amountCents <= v.buffer.pusdCents,
         text: d.amountCents > v.buffer.pusdCents ? `Vault holds only ${pusd(v.buffer.pusdCents)} PUSD` : `Vault PUSD ${pusd(v.buffer.pusdCents)} → ${pusd(v.buffer.pusdCents - d.amountCents)}` },
     ];

@@ -104,6 +104,7 @@ export interface NewVaultDraft {
   skimCrBps: number;
   keeperFeeMaxSats: number;
   payees: Payee[];
+  /** entered in PUSD; converted to sats of value at the current price when the policy is written (the covenant's unit) */
   perPaymentMaxCents: bigint;
   dailyBudgetCents: bigint;
   collateralSats: bigint;

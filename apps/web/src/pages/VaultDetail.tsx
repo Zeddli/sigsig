@@ -4,7 +4,7 @@ import { PageHead, Skeleton, ErrorLine } from '../components/AppShell';
 import { HealthPanel, Figure } from '../components/HealthPanel';
 import { Addr } from '../components/Copy';
 import { useWallet } from '../wallet';
-import { bch, pct, pusd } from '../data/format';
+import { bch, pct, pusd, satsToCents } from '../data/format';
 import { EXPLORER } from '../config/app';
 import type { ActivityItem, VaultView } from '../data/source';
 
@@ -74,6 +74,8 @@ export function VaultDetail() {
   }
 
   const left = v ? v.policy.dailyBudget - v.policy.spentToday : 0n;
+  // limits are sats of value (the covenant's unit); shown as their PUSD equivalent at the current price
+  const eq = (n: bigint) => (v ? satsToCents(n, v.health.priceCentsPerBch) : 0n);
   const usedPct = v ? Number((v.policy.spentToday * 100n) / (v.policy.dailyBudget || 1n)) : 0;
 
   return (
@@ -105,12 +107,12 @@ export function VaultDetail() {
         </section>
         <section className="s-box s-span-4" aria-labelledby="budget-h">
           <h2 id="budget-h" className="s-box__h">Today's budget</h2>
-          <p className="s-big mono">{v ? `${pusd(v.policy.spentToday)} / ${pusd(v.policy.dailyBudget)}` : '—'} <span className="s-fig__unit">PUSD</span></p>
+          <p className="s-big mono">{v ? `${pusd(eq(v.policy.spentToday))} / ${pusd(eq(v.policy.dailyBudget))}` : '—'} <span className="s-fig__unit">≈ PUSD</span></p>
           <div className="s-meter" role="meter" aria-label="Daily budget used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={usedPct}
-            aria-valuetext={v ? `${pusd(v.policy.spentToday)} of ${pusd(v.policy.dailyBudget)} PUSD spent today, ${pusd(left)} left` : 'not read yet'}>
+            aria-valuetext={v ? `about ${pusd(eq(v.policy.spentToday))} of ${pusd(eq(v.policy.dailyBudget))} PUSD of value spent today, ${pusd(eq(left))} left` : 'not read yet'}>
             <i style={{ width: `${usedPct}%` }} className={usedPct >= 80 ? 'is-watch' : ''} />
           </div>
-          <p className="t-small muted">{v ? `${pusd(left)} PUSD left · resets at block ${v.budgetResetHeight.toLocaleString('en').replace(/,/g, ' ')}` : '—'}</p>
+          <p className="t-small muted">{v ? `${left.toLocaleString('en')} sats of value left (≈ ${pusd(eq(left))} PUSD at ${pusd(v.health.priceCentsPerBch)} per BCH) · resets at block ${v.budgetResetHeight.toLocaleString('en').replace(/,/g, ' ')}` : '—'}</p>
         </section>
         <section className="s-box s-span-4" aria-labelledby="interest-h">
           <h2 id="interest-h" className="s-box__h">Interest</h2>
