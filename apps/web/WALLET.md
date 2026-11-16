@@ -46,7 +46,7 @@ interface Wallet {
 4. The wallet must sign with `SIGHASH_ALL | SIGHASH_UTXOS | SIGHASH_FORKID` (0x61 for Schnorr) and refuses
    anything else; it answers `sign_transaction_response` with `signedTransaction` (hex) or `error`.
 
-### Can it sign covenant inputs with sourceOutputs? Yes, with three conditions
+### Can it sign covenant inputs with sourceOutputs? Yes, with three conditions (implemented in src/data/live.ts)
 
 What a wallet does with a contract input is wallet code, not protocol. We read Cashonize's implementation
 (`src/utils/dapp/wizSigning.ts`, `createSignedWizTransaction`), the first wallet with WizardConnect:
@@ -73,6 +73,24 @@ So for `Vault.pay(s1, s2, s3, payee, proof)` the builder in `@sigsig/core` must:
    signer signs the same unsigned tx with only their own slot as placeholder; the app pulls `s_k` out of each
    returned tx and writes the final unlocking bytecode with all M signatures. A signer never has to sign a tx
    that already holds another signer's signature.
+
+### Can a WizardConnect wallet sign an arbitrary sighash (for `paymentSighash`)? No: whole transactions only
+
+hdwalletv1 has one signing action, `sign_transaction_request`; the published extensions (`bch_stealth_bip352`,
+`rpa_bip47`, proposed `decrypt`) add no sign-hash or sign-message action, and the `WalletAdapter` interface a
+wallet implements has only `signTransaction(request)`. The wallet computes the sighash itself from the tx and
+`sourceOutputs`. So the app never hands the wallet `paymentSighash(...)`; it hands it the tx that produces that
+hash and reads the signature back out:
+
+1. `prepareSignature(slot)` = core's `buildPay(ctx, req, { [mySlot]: 'placeholder', others: null })`.
+2. `wallet.signTransaction(tx, { inputPaths })` with `[0, 'receive', 0]` and, for a PUSD payment,
+   `[2, 'receive', 0]` too: input 2 (the PUSD buffer) runs `Vault.pay` with the same arguments, so its unlocking
+   bytecode also holds the placeholder, and Cashonize throws on a placeholder input missing from `inputPaths`
+   (the covenant does not check the signature at input 2; it is harmless).
+3. `extractSignature(signedTxHex)` (src/data/live.ts) takes the one 65-byte push from input 0: Schnorr + `0x61`
+   (ALL | UTXOS | FORKID), which is exactly `signPayment`/`paymentSighash(ctx, built, 0x61)` with the wallet's key.
+   It goes into the request link (`#s2=…`), and when M are in, `buildPay(ctx, req, {1: sig1, 3: sig3})` assembles
+   the tx; slots that did not sign get an empty push (`null`), never a placeholder (NULLFAIL would fail the script).
 
 The covenant side must accept that hash type: CashScript's `checkSig` accepts any valid sighash flag with
 FORKID, and the vault must not pin `SIGHASH_ALL` alone. Its `pay` test should use a 65-byte signature with
