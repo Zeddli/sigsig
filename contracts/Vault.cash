@@ -1,0 +1,403 @@
+pragma cashscript ^0.13.0;
+
+// sigsig Vault: holds a ParyonUSD loanKey, a policy state NFT and a buffer (BCH + PUSD).
+// Spec: ARCHITECTURE.md section 2.2, docs/01 section 3.
+//
+// One script, three kinds of UTXO (all at the same P2SH32 address):
+//   KeyUTXO   1000 sats + the loanKey (category loanKeyCategory, minting, commitment 0x)
+//   StateUTXO buffer BCH + the policy NFT (category stateCategory, mutable, 52-byte commitment)
+//   PusdUTXO  buffer PUSD (fungible, category paryonTokenId), no NFT
+//
+// Security model ("state anchor"):
+//   Every function has fixed input indexes S (state), K (key), P (PUSD buffer).
+//   The input at S runs the full checks for the whole transaction. Any other vault input running
+//   the same function only checks that it sits at K or P and that input S is the StateUTXO.
+//   Every full check in a function without signatures (defend, skim) or with bounded signatures
+//   (pay) also requires that no other input carries this script and that no extra output carries
+//   tokens. So whatever function another vault input runs, the full checks of the function at S
+//   hold for the whole transaction. KeyUTXO and PusdUTXO can never move without the StateUTXO.
+//
+// State commitment (52 bytes):
+//   ver1 | defendCR2 | targetCR2 | skimCR2 | keeperFeeMax3 | payeeRoot20 | perPaymentMax6 |
+//   dailyBudget6 | dayIndex4 | spentToday6
+//   offsets: 0 | 1 | 3 | 5 | 7 | 10 | 30 | 36 | 42 | 46 | 52
+//   All integers are fixed-width VM numbers (little endian, sign bit in the last byte).
+//
+// Paryon facts used here (docs/paryon contracts, manage.cash and changeInterest.cash):
+//   manage layout   in : 0 price | 1 loan | 2 sidecar | 3 manageFn (paryonTokenId, 0x02) | 4 loanKey
+//                   out: 0 price | 1 loan | 2 sidecar | 3 manageFn | 4 loanKey | 5 OP_RETURN burn (if repay)
+//   changeInterest  in : 0 loan | 1 sidecar | 2 changeInterestFn (paryonTokenId, 0x08) | 3 loanKey
+//   price state     0x00 | seq4 | price4 (PUSD cents per BCH)
+//   loan state      0x01 | borrowed6 | beingRedeemed6 | status1 | lastPeriod4 | rate2 | nextRate2 | imc5
+//   CR_bps = coll * price * 10000 / (debt * 1e8); we compare cross-multiplied values.
+//
+// Layouts (ours):
+//   defend       in : 0-3 Paryon | 4 Key | 5 State | 6 Pusd (optional) | 7.. keeper (not vault)
+//                out: 0-4 Paryon | 5 burn (if repay) | State | Pusd (optional) | keeper change (no tokens)
+//   skim         in : 0-3 Paryon | 4 Key | 5 State | 6.. keeper
+//                out: 0-4 Paryon | 5 State | 6.. keeper change (no tokens)
+//   pay (BCH)    in : 0 State | 1.. fee inputs              out: 0 payee | 1 State | 2.. change (no tokens)
+//   pay (PUSD)   in : 0 State | 1 PriceContract | 2 Pusd | 3.. fee inputs
+//                out: 0 payee | 1 PriceContract | 2 State | 3 Pusd change (optional) | .. change (no tokens)
+//   adminManage  in : 0-3 Paryon manage | 4 Key | 5 State | 6 Pusd (optional)   outputs free (M sigs)
+//   adminInterest in: 0-2 Paryon changeInterest | 3 Key | 4 State             outputs free (M sigs)
+//   adminPolicy  in : 0 State | 1.. fee inputs              out: 0 State (new policy, same day fields)
+//   exit         in : 0 State | any other vault UTXOs anywhere                  outputs free (M sigs)
+
+contract Vault(
+  bytes32 paryonTokenId,
+  bytes32 loanKeyCategory,
+  bytes32 stateCategory,
+  pubkey pk1,
+  pubkey pk2,
+  pubkey pk3,
+  int m
+) {
+  // Anyone (keeper). Improves a loan that is below defendCR using the buffer.
+  function defend() {
+    bytes vaultLock = new LockingBytecodeP2SH32(hash256(this.activeBytecode));
+    if (this.activeInputIndex == 5) {
+      // Vault inputs
+      require(tx.inputs[5].tokenCategory == stateCategory + 0x01, "defend: input 5 must be the state NFT");
+      require(tx.inputs[4].lockingBytecode == vaultLock, "defend: input 4 must be the vault key");
+      require(tx.inputs[4].tokenCategory == loanKeyCategory + 0x02, "defend: input 4 must hold the loanKey");
+
+      // Paryon inputs: pin the manage function and our own loan
+      require(tx.inputs[3].tokenCategory == paryonTokenId, "defend: input 3 must be a Paryon function");
+      require(tx.inputs[3].nftCommitment == 0x02, "defend: input 3 must be the manage function");
+      require(tx.inputs[2].tokenCategory == loanKeyCategory, "defend: input 2 must be our loan sidecar");
+      require(tx.inputs[1].tokenCategory == paryonTokenId + 0x01, "defend: input 1 must be a Paryon loan");
+      require(tx.inputs[0].tokenCategory == paryonTokenId + 0x01, "defend: input 0 must be the price contract");
+      bytes priceState = tx.inputs[0].nftCommitment;
+      require(priceState.split(1)[0] == 0x00, "defend: input 0 must be the price contract");
+      int price = int(priceState.slice(5, 9));
+
+      // Loan before/after (loan must stay open: output 1 is the loan again)
+      require(tx.outputs[1].tokenCategory == paryonTokenId + 0x01, "defend: loan must stay open");
+      bytes loanIn = tx.inputs[1].nftCommitment;
+      bytes loanOut = tx.outputs[1].nftCommitment;
+      require(loanOut.split(7)[1] == loanIn.split(7)[1], "defend: only the debt may change in the loan state");
+      int debtIn = int(loanIn.slice(1, 7));
+      int debtOut = int(loanOut.slice(1, 7));
+      int collIn = tx.inputs[1].value;
+      int collOut = tx.outputs[1].value;
+      require(debtOut <= debtIn, "defend: debt must not increase");
+      require(collOut >= collIn, "defend: collateral must not decrease");
+      require(debtOut < debtIn || collOut > collIn, "defend: position must improve");
+
+      // Policy
+      bytes policy = tx.inputs[5].nftCommitment;
+      int defendCR = int(policy.slice(1, 3));
+      int targetCR = int(policy.slice(3, 5));
+      int feeMax = int(policy.slice(7, 10));
+      require(collIn * price * 10000 < defendCR * debtIn * 100000000, "defend: CR is not below defendCR");
+
+      // State output (after the burn output when PUSD is repaid)
+      int repaid = debtIn - debtOut;
+      int stateOut = 5;
+      if (repaid > 0) {
+        stateOut = 6;
+      }
+      require(tx.outputs[stateOut].lockingBytecode == vaultLock, "defend: state must return to the vault");
+      require(tx.outputs[stateOut].tokenCategory == stateCategory + 0x01, "defend: state NFT must be recreated");
+      require(tx.outputs[stateOut].nftCommitment == policy, "defend: policy must not change");
+
+      // Optional PUSD buffer: input 6, recreated right after the state output
+      int vaultIn = tx.inputs[5].value;
+      int vaultOut = tx.outputs[stateOut].value;
+      int pusdIn = 0;
+      int pusdOut = 0;
+      int nextIn = 6;
+      int nextOut = stateOut + 1;
+      if (tx.inputs.length > 6) {
+        if (tx.inputs[6].lockingBytecode == vaultLock) {
+          require(tx.inputs[6].tokenCategory == paryonTokenId, "defend: input 6 must be the PUSD buffer");
+          pusdIn = tx.inputs[6].tokenAmount;
+          vaultIn = vaultIn + tx.inputs[6].value;
+          nextIn = 7;
+        }
+      }
+      if (tx.outputs.length > nextOut) {
+        if (tx.outputs[nextOut].lockingBytecode == vaultLock) {
+          require(tx.outputs[nextOut].tokenCategory == paryonTokenId, "defend: PUSD buffer output must hold only PUSD");
+          pusdOut = tx.outputs[nextOut].tokenAmount;
+          vaultOut = vaultOut + tx.outputs[nextOut].value;
+          nextOut = nextOut + 1;
+        }
+      }
+
+      // Nothing else of the vault in this tx, and no tokens leave on other outputs
+      int i = nextIn;
+      while (i < tx.inputs.length) {
+        require(tx.inputs[i].lockingBytecode != vaultLock, "defend: unexpected vault input");
+        i = i + 1;
+      }
+      int j = nextOut;
+      while (j < tx.outputs.length) {
+        require(tx.outputs[j].tokenCategory == 0x, "defend: extra outputs must not carry tokens");
+        j = j + 1;
+      }
+      // Buffer may only move into the loan, plus at most keeperFeeMax sats
+      require(vaultOut >= vaultIn - (collOut - collIn) - feeMax, "defend: buffer BCH spent beyond collateral + fee cap");
+      require(pusdOut >= pusdIn - repaid, "defend: buffer PUSD spent beyond the repayment");
+
+      // After: target reached, or the buffer is used up
+      bool reachedTarget = collOut * price * 10000 >= targetCR * debtOut * 100000000;
+      bool exhausted = tx.outputs[stateOut].value <= 2000 && pusdOut < 10000;
+      require(reachedTarget || exhausted, "defend: CR after is below targetCR and the buffer is not used up");
+
+    } else {
+      require(this.activeInputIndex == 4 || this.activeInputIndex == 6, "defend: vault input at a wrong index");
+      require(tx.inputs[5].lockingBytecode == vaultLock, "defend: input 5 must be the vault state");
+      require(tx.inputs[5].tokenCategory == stateCategory + 0x01, "defend: input 5 must be the vault state");
+    }
+  }
+
+  // Anyone (keeper). Withdraws excess collateral into the buffer when CR is above skimCR.
+  function skim() {
+    bytes vaultLock = new LockingBytecodeP2SH32(hash256(this.activeBytecode));
+    if (this.activeInputIndex == 5) {
+      require(tx.inputs[5].tokenCategory == stateCategory + 0x01, "skim: input 5 must be the state NFT");
+      require(tx.inputs[4].lockingBytecode == vaultLock, "skim: input 4 must be the vault key");
+      require(tx.inputs[4].tokenCategory == loanKeyCategory + 0x02, "skim: input 4 must hold the loanKey");
+
+      require(tx.inputs[3].tokenCategory == paryonTokenId, "skim: input 3 must be a Paryon function");
+      require(tx.inputs[3].nftCommitment == 0x02, "skim: input 3 must be the manage function");
+      require(tx.inputs[2].tokenCategory == loanKeyCategory, "skim: input 2 must be our loan sidecar");
+      require(tx.inputs[1].tokenCategory == paryonTokenId + 0x01, "skim: input 1 must be a Paryon loan");
+      require(tx.inputs[0].tokenCategory == paryonTokenId + 0x01, "skim: input 0 must be the price contract");
+      bytes priceState = tx.inputs[0].nftCommitment;
+      require(priceState.split(1)[0] == 0x00, "skim: input 0 must be the price contract");
+      int price = int(priceState.slice(5, 9));
+
+      require(tx.outputs[1].tokenCategory == paryonTokenId + 0x01, "skim: loan must stay open");
+      bytes loanIn = tx.inputs[1].nftCommitment;
+      require(tx.outputs[1].nftCommitment == loanIn, "skim: loan state (debt) must not change");
+      require(int(loanIn.slice(7, 13)) == 0, "skim: redemption pending");
+      int debt = int(loanIn.slice(1, 7));
+      int collIn = tx.inputs[1].value;
+      int collOut = tx.outputs[1].value;
+      require(collOut < collIn, "skim: must withdraw collateral");
+
+      bytes policy = tx.inputs[5].nftCommitment;
+      int targetCR = int(policy.slice(3, 5));
+      int skimCR = int(policy.slice(5, 7));
+      int feeMax = int(policy.slice(7, 10));
+      require(collIn * price * 10000 > skimCR * debt * 100000000, "skim: CR is not above skimCR");
+      require(collOut * price * 10000 >= targetCR * debt * 100000000, "skim: CR after is below targetCR");
+
+      int i = 6;
+      while (i < tx.inputs.length) {
+        require(tx.inputs[i].lockingBytecode != vaultLock, "skim: unexpected vault input");
+        i = i + 1;
+      }
+      int j = 6;
+      while (j < tx.outputs.length) {
+        require(tx.outputs[j].tokenCategory == 0x, "skim: extra outputs must not carry tokens");
+        j = j + 1;
+      }
+      require(tx.outputs[5].lockingBytecode == vaultLock, "skim: state must return to the vault");
+      require(tx.outputs[5].tokenCategory == stateCategory + 0x01, "skim: state NFT must be recreated");
+      require(tx.outputs[5].nftCommitment == policy, "skim: policy must not change");
+      require(tx.outputs[5].value >= tx.inputs[5].value + (collIn - collOut) - feeMax, "skim: withdrawn collateral must go to the buffer (fee over cap)");
+
+    } else {
+      require(this.activeInputIndex == 4, "skim: vault input at a wrong index");
+      require(tx.inputs[5].lockingBytecode == vaultLock, "skim: input 5 must be the vault state");
+      require(tx.inputs[5].tokenCategory == stateCategory + 0x01, "skim: input 5 must be the vault state");
+    }
+  }
+
+  // M of 3. Pays an allowlisted payee (output 0) in BCH or PUSD within the per-payment and daily limits.
+  // proof: up to 3 entries of (dir1 | sibling20); dir 0x00 = sibling on the right.
+  function pay(sig s1, sig s2, sig s3, bytes proof) {
+    bytes vaultLock = new LockingBytecodeP2SH32(hash256(this.activeBytecode));
+    if (this.activeInputIndex == 0) {
+      require(tx.inputs[0].tokenCategory == stateCategory + 0x01, "pay: input 0 must be the state NFT");
+      int n = 0;
+      if (checkSig(s1, pk1)) { n = n + 1; }
+      if (checkSig(s2, pk2)) { n = n + 1; }
+      if (checkSig(s3, pk3)) { n = n + 1; }
+      require(n >= m, "pay: not enough signatures");
+
+      bytes policy = tx.inputs[0].nftCommitment;
+      int feeMax = int(policy.slice(7, 10));
+      bytes payeeRoot = policy.slice(10, 30);
+      int perPaymentMax = int(policy.slice(30, 36));
+      int dailyBudget = int(policy.slice(36, 42));
+      int dayIndex = int(policy.slice(42, 46));
+      int spentToday = int(policy.slice(46, 52));
+
+      // Payee allowlist: hash160 merkle proof for output 0
+      require(proof.length <= 63, "pay: proof too long");
+      require(proof.length % 21 == 0, "pay: bad proof");
+      bytes node = hash160(0x00 + tx.outputs[0].lockingBytecode);
+      bytes rest = proof;
+      while (rest.length > 0) {
+        bytes entry = rest.split(21)[0];
+        rest = rest.split(21)[1];
+        bytes sibling = entry.split(1)[1];
+        if (entry.split(1)[0] == 0x00) {
+          node = hash160(0x01 + node + sibling);
+        } else {
+          node = hash160(0x01 + sibling + node);
+        }
+      }
+      require(node == payeeRoot, "pay: payee not allowed");
+
+      // Vault inputs/outputs by mode
+      int vaultIn = tx.inputs[0].value;
+      int vaultOut = 0;
+      int pusdSats = 0;
+      int stateOut = 1;
+      int nextIn = 1;
+      int nextOut = 2;
+      if (tx.outputs[0].tokenCategory == paryonTokenId) {
+        // PUSD payment: price contract at 1 (shares its price), PUSD buffer at 2
+        require(tx.inputs[1].tokenCategory == paryonTokenId + 0x01, "pay: input 1 must be the price contract");
+        bytes priceState = tx.inputs[1].nftCommitment;
+        require(priceState.split(1)[0] == 0x00, "pay: input 1 must be the price contract");
+        int price = int(priceState.slice(5, 9));
+        require(tx.inputs[2].lockingBytecode == vaultLock, "pay: input 2 must be the PUSD buffer");
+        require(tx.inputs[2].tokenCategory == paryonTokenId, "pay: input 2 must be the PUSD buffer");
+        vaultIn = vaultIn + tx.inputs[2].value;
+        int pusdIn = tx.inputs[2].tokenAmount;
+        int pusdOut = 0;
+        stateOut = 2;
+        nextIn = 3;
+        nextOut = 3;
+        if (tx.outputs.length > 3) {
+          if (tx.outputs[3].lockingBytecode == vaultLock) {
+            require(tx.outputs[3].tokenCategory == paryonTokenId, "pay: PUSD change must hold only PUSD");
+            pusdOut = tx.outputs[3].tokenAmount;
+            vaultOut = tx.outputs[3].value;
+            nextOut = 4;
+          }
+        }
+        // value of the PUSD that left the vault, in sats (rounded up)
+        pusdSats = max((pusdIn - pusdOut) * 100000000 + price - 1, 0) / price;
+      } else {
+        require(tx.outputs[0].tokenCategory == 0x, "pay: payee output may only carry PUSD");
+      }
+
+      require(tx.outputs[stateOut].lockingBytecode == vaultLock, "pay: state must return to the vault");
+      require(tx.outputs[stateOut].tokenCategory == stateCategory + 0x01, "pay: state NFT must be recreated");
+      vaultOut = vaultOut + tx.outputs[stateOut].value;
+
+      // BCH that leaves the vault may only go to the payee, plus at most keeperFeeMax for the tx fee
+      int bchLost = vaultIn - vaultOut;
+      require(bchLost <= tx.outputs[0].value + feeMax, "pay: BCH leaves to a non-payee output (fee over cap)");
+      int amount = max(bchLost, 0) + pusdSats;
+      require(amount <= perPaymentMax, "pay: over per-payment limit");
+
+      int i = nextIn;
+      while (i < tx.inputs.length) {
+        require(tx.inputs[i].lockingBytecode != vaultLock, "pay: unexpected vault input");
+        i = i + 1;
+      }
+      int j = nextOut;
+      while (j < tx.outputs.length) {
+        require(tx.outputs[j].tokenCategory == 0x, "pay: extra outputs must not carry tokens");
+        j = j + 1;
+      }
+      // Daily budget; locktime is enforced so the day cannot be in the future
+      require(tx.time >= 0);
+      require(tx.locktime < 500000000, "pay: locktime must be a block height");
+      int day = tx.locktime / 144;
+      require(day >= dayIndex, "pay: day must not go backwards");
+      int newSpent = amount;
+      if (day == dayIndex) {
+        newSpent = spentToday + amount;
+      }
+      require(newSpent <= dailyBudget, "pay: over daily budget");
+      bytes newState = policy.split(42)[0] + toPaddedBytes(day, 4) + toPaddedBytes(newSpent, 6);
+      require(tx.outputs[stateOut].nftCommitment == newState, "pay: state must record the new day and spend");
+
+    } else {
+      require(this.activeInputIndex == 2, "pay: vault input at a wrong index");
+      require(tx.inputs[0].lockingBytecode == vaultLock, "pay: input 0 must be the vault state");
+      require(tx.inputs[0].tokenCategory == stateCategory + 0x01, "pay: input 0 must be the vault state");
+    }
+  }
+
+  // M of 3. Any Paryon manage call (repay, add/withdraw collateral, close). Outputs are covered by the signatures.
+  function adminManage(sig s1, sig s2, sig s3) {
+    bytes vaultLock = new LockingBytecodeP2SH32(hash256(this.activeBytecode));
+    if (this.activeInputIndex == 5) {
+      require(tx.inputs[5].tokenCategory == stateCategory + 0x01, "adminManage: input 5 must be the state NFT");
+      int n = 0;
+      if (checkSig(s1, pk1)) { n = n + 1; }
+      if (checkSig(s2, pk2)) { n = n + 1; }
+      if (checkSig(s3, pk3)) { n = n + 1; }
+      require(n >= m, "adminManage: not enough signatures");
+      require(tx.inputs[4].lockingBytecode == vaultLock, "adminManage: input 4 must be the vault key");
+      require(tx.inputs[4].tokenCategory == loanKeyCategory + 0x02, "adminManage: input 4 must hold the loanKey");
+      require(tx.inputs[3].tokenCategory == paryonTokenId, "adminManage: input 3 must be a Paryon function");
+      require(tx.inputs[3].nftCommitment == 0x02, "adminManage: input 3 must be the manage function");
+    } else {
+      require(this.activeInputIndex == 4 || this.activeInputIndex == 6, "adminManage: vault input at a wrong index");
+      require(tx.inputs[5].lockingBytecode == vaultLock, "adminManage: input 5 must be the vault state");
+      require(tx.inputs[5].tokenCategory == stateCategory + 0x01, "adminManage: input 5 must be the vault state");
+    }
+  }
+
+  // M of 3. Paryon changeInterest (loanKey at input 3).
+  function adminInterest(sig s1, sig s2, sig s3) {
+    bytes vaultLock = new LockingBytecodeP2SH32(hash256(this.activeBytecode));
+    if (this.activeInputIndex == 4) {
+      require(tx.inputs[4].tokenCategory == stateCategory + 0x01, "adminInterest: input 4 must be the state NFT");
+      int n = 0;
+      if (checkSig(s1, pk1)) { n = n + 1; }
+      if (checkSig(s2, pk2)) { n = n + 1; }
+      if (checkSig(s3, pk3)) { n = n + 1; }
+      require(n >= m, "adminInterest: not enough signatures");
+      require(tx.inputs[3].lockingBytecode == vaultLock, "adminInterest: input 3 must be the vault key");
+      require(tx.inputs[3].tokenCategory == loanKeyCategory + 0x02, "adminInterest: input 3 must hold the loanKey");
+      require(tx.inputs[2].tokenCategory == paryonTokenId, "adminInterest: input 2 must be a Paryon function");
+      require(tx.inputs[2].nftCommitment == 0x08, "adminInterest: input 2 must be the changeInterest function");
+    } else {
+      require(this.activeInputIndex == 3, "adminInterest: vault input at a wrong index");
+      require(tx.inputs[4].lockingBytecode == vaultLock, "adminInterest: input 4 must be the vault state");
+      require(tx.inputs[4].tokenCategory == stateCategory + 0x01, "adminInterest: input 4 must be the vault state");
+    }
+  }
+
+  // M of 3. Rewrites the 42 policy bytes; keeps dayIndex and spentToday.
+  function adminPolicy(sig s1, sig s2, sig s3, bytes newPolicy) {
+    bytes vaultLock = new LockingBytecodeP2SH32(hash256(this.activeBytecode));
+    require(this.activeInputIndex == 0, "adminPolicy: state must be input 0");
+    require(tx.inputs[0].tokenCategory == stateCategory + 0x01, "adminPolicy: input 0 must be the state NFT");
+    int n = 0;
+    if (checkSig(s1, pk1)) { n = n + 1; }
+    if (checkSig(s2, pk2)) { n = n + 1; }
+    if (checkSig(s3, pk3)) { n = n + 1; }
+    require(n >= m, "adminPolicy: not enough signatures");
+    require(newPolicy.length == 42, "adminPolicy: policy must be 42 bytes");
+    bytes dayFields = tx.inputs[0].nftCommitment.split(42)[1];
+    int i = 1;
+    while (i < tx.inputs.length) {
+      require(tx.inputs[i].lockingBytecode != vaultLock, "adminPolicy: unexpected vault input");
+      i = i + 1;
+    }
+    require(tx.outputs[0].lockingBytecode == vaultLock, "adminPolicy: state must return to the vault");
+    require(tx.outputs[0].tokenCategory == stateCategory + 0x01, "adminPolicy: state NFT must be recreated");
+    require(tx.outputs[0].nftCommitment == newPolicy + dayFields, "adminPolicy: day fields must be kept");
+  }
+
+  // M of 3. Emergency: free spend of every vault UTXO in the tx (state at input 0 carries the signatures).
+  function exit(sig s1, sig s2, sig s3) {
+    bytes vaultLock = new LockingBytecodeP2SH32(hash256(this.activeBytecode));
+    if (this.activeInputIndex == 0) {
+      require(tx.inputs[0].tokenCategory == stateCategory + 0x01, "exit: input 0 must be the state NFT");
+      int n = 0;
+      if (checkSig(s1, pk1)) { n = n + 1; }
+      if (checkSig(s2, pk2)) { n = n + 1; }
+      if (checkSig(s3, pk3)) { n = n + 1; }
+      require(n >= m, "exit: not enough signatures");
+    } else {
+      require(this.activeInputIndex > 0, "exit: vault input at a wrong index");
+      require(tx.inputs[0].lockingBytecode == vaultLock, "exit: input 0 must be the vault state");
+      require(tx.inputs[0].tokenCategory == stateCategory + 0x01, "exit: input 0 must be the vault state");
+    }
+  }
+}
