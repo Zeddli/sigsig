@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "deploy:chipnet": "tsx src/deploy-paryon-chipnet.ts",
     "oracle": "tsx src/oracle.ts",
-    "verify": "tsx src/verify.ts"
+    "verify": "tsx src/verify.ts",
+    "demo:vault": "tsx src/demo-vault.ts"
   },
   "dependencies": {
     "@bitauth/libauth": "^3.0.0",

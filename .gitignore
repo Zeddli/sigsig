@@ -8,3 +8,4 @@ shots/
 .claude.claude/worktrees
 .taste-skill/gate.json
 .claude/
+vault.env
