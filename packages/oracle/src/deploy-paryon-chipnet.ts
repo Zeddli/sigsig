@@ -11,15 +11,17 @@
  *      Chained: prep[k] spends prep[k-1]:1, so nothing depends on wallet UTXO selection after prep[0].
  *   2. with all 5 token ids known, build the 26 contracts (constructor args as in verify_contract_deployment).
  *   3. genesis[k]: spends prep[k]:0 → out0 BCH change, out1.. the token outputs mainnet-v1 created.
- *   4. write deployments/<network>.json.
+ *   4. migrate each price thread PriceContract → PriceContractGuarded with the migration key (mainnet did this on
+ *      2026-10-08, block 972003: in0 price [migrateContract], in1 migration key, in2 fee → out0 guarded, out1 key back).
+ *   5. write deployments/<network>.json.
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { binToHex } from '@bitauth/libauth';
+import { binToHex, hexToBin } from '@bitauth/libauth';
 import { TransactionBuilder, type NetworkProvider, type Output, type Utxo } from 'cashscript';
-import type { NetworkName } from '@sigsig/core';
+import type { NetworkName, ParyonDeployment } from '@sigsig/core';
 import {
-  CATEGORY_ORDER, LEAN_COUNTS, MAINNET_COUNTS, TOKEN_ID_FIELD, buildParyonContracts, contractList, genesisOutputs,
+  CATEGORY_ORDER, CONTRACT_SATS, LEAN_COUNTS, MAINNET_COUNTS, TOKEN_ID_FIELD, buildContracts, contractList, genesisOutputs,
   type CategoryKey, type ContractParams, type GenesisCounts, type TokenIds,
 } from './paryon.js';
 import { loadKeys, type KeyPair } from './keys.js';
@@ -41,6 +43,8 @@ export interface DeployState {
   budgets: Record<CategoryKey, string>; // sats on prep[k]:0, as decimal strings
   prep: TxRecord[];
   genesis: Partial<Record<CategoryKey, TxRecord>>;
+  /** PriceContract → PriceContractGuarded migrations, one per price thread (mainnet did this at block 972003) */
+  migrations?: TxRecord[];
   done: boolean;
 }
 
@@ -91,6 +95,10 @@ function contractParamsFrom(state: DeployState): ContractParams {
   };
 }
 
+function deploymentOf(state: DeployState, tokenIds: TokenIds): ParyonDeployment {
+  return { name: `${state.network}-sigsig-v1`, network: state.network, tokenIds, contractParams: contractParamsFrom(state) };
+}
+
 /** Build genesis tx k spending `input` (= prep[k]:0); change at out0. */
 function buildGenesis(
   key: CategoryKey, input: Utxo, outputs: Output[], funder: KeyPair, provider: NetworkProvider, feeRate: number,
@@ -108,7 +116,7 @@ function buildGenesis(
 /** Size-based budget of each genesis tx, computed with dummy token ids (sizes do not depend on the ids). */
 function computeBudgets(state: DeployState, keys: DeployOptions['keys'], provider: NetworkProvider, feeRate: number) {
   const dummyIds = tokenIdsFrom(CATEGORY_ORDER.map((_, i) => `${(i + 1).toString(16).padStart(2, '0')}`.repeat(32)));
-  const contracts = buildParyonContracts(dummyIds, contractParamsFrom(state), provider);
+  const contracts = buildContracts(deploymentOf(state, dummyIds), provider);
   const budgets = {} as Record<CategoryKey, string>;
   for (const key of CATEGORY_ORDER) {
     const outs = genesisOutputs(key, {
@@ -181,7 +189,8 @@ export async function deployParyon(opts: DeployOptions): Promise<DeploymentFile>
         const utxos = (await provider.getUtxos(funderAddr)).filter((u) => !u.token);
         inputs = utxos;
         const have = utxos.reduce((s, u) => s + u.satoshis, 0n);
-        const need = genesisTotal + 5n * 400n + BigInt(utxos.length) * 150n + DUST;
+        const need = genesisTotal + 5n * 400n + BigInt(utxos.length) * 150n + DUST
+          + BigInt(state.counts.priceContracts) * 1000n; // migration tx fees
         if (have < need && opts.dryRun) {
           log(`dry run: funder ${funderAddr} has ${have} sats, needs ≥ ${need}; sizing with a synthetic input`);
           inputs = [{ txid: '00'.repeat(32), vout: 0, satoshis: need }];
@@ -211,7 +220,7 @@ export async function deployParyon(opts: DeployOptions): Promise<DeploymentFile>
   // ---- 2. contracts ----
   const tokenIds = tokenIdsFrom(state.prep.map((p) => p.txid));
   const params = contractParamsFrom(state);
-  const contracts = buildParyonContracts(tokenIds, params, provider);
+  const contracts = buildContracts(deploymentOf(state, tokenIds), provider);
   log(`token ids: ${JSON.stringify(tokenIds)}`);
 
   // ---- 3. genesis txs ----
@@ -233,8 +242,53 @@ export async function deployParyon(opts: DeployOptions): Promise<DeploymentFile>
     await send(state.genesis[key]!, `genesis ${key}`);
   }
 
-  // ---- 4. deployment file ----
+  // ---- 4. migrate every price thread PriceContract → PriceContractGuarded (as mainnet did at block 972003) ----
+  // Mainnet layout: in0 PriceContract [migrateContract], in1 migration key NFT (P2PKH), in2 fee
+  //                 → out0 PriceContractGuarded (same category/commitment, 1000 sats), out1 migration key back, out2 change.
+  // Chained: the key and the fee change of migration k feed migration k+1.
   const g = state.genesis as Record<CategoryKey, TxRecord>;
+  state.migrations ??= [];
+  const paryonGenesis = decodeTx(g.paryon.hex);
+  const migGenesis = decodeTx(g.oracleMigrationKey.hex);
+  for (let k = 0; k < state.counts.priceContracts; k++) {
+    if (!state.migrations[k]) {
+      const priceVout = 1 + state.counts.borrowing + k; // genesis: change, borrowing×N, price×M, …
+      const priceOut = paryonGenesis.outputs[priceVout]!;
+      if (binToHex(priceOut.lockingBytecode) !== contracts.price.lockingBytecode) throw new Error(`paryon genesis vout ${priceVout} is not a PriceContract`);
+      const commitment = binToHex(priceOut.token!.nft!.commitment);
+      const priceUtxo: Utxo = {
+        txid: g.paryon.txid, vout: priceVout, satoshis: priceOut.valueSatoshis,
+        token: { category: tokenIds.paryonTokenId, amount: 0n, nft: { capability: 'mutable', commitment } },
+      };
+      const keyToken = { category: tokenIds.oracleMigrationKeyTokenId, amount: 0n, nft: { capability: 'minting' as const, commitment: '' } };
+      const prevMig = k > 0 ? state.migrations[k - 1]! : undefined;
+      const keyUtxo: Utxo = prevMig
+        ? { txid: prevMig.txid, vout: 1, satoshis: CONTRACT_SATS, token: keyToken }
+        : { txid: g.oracleMigrationKey.txid, vout: 1, satoshis: migGenesis.outputs[1]!.valueSatoshis, token: keyToken };
+      const feeUtxo: Utxo = prevMig
+        ? { txid: prevMig.txid, vout: 2, satoshis: decodeTx(prevMig.hex).outputs[2]!.valueSatoshis }
+        : { txid: state.prep[4]!.txid, vout: 1, satoshis: decodeTx(state.prep[4]!.hex).outputs[1]!.valueSatoshis };
+      const make = (change: bigint) => new TransactionBuilder({ provider })
+        .addInput(priceUtxo, contracts.price.unlock.migrateContract())
+        .addInput(keyUtxo, keys.migration.signer.unlockP2PKH())
+        .addInput(feeUtxo, keys.funder.signer.unlockP2PKH())
+        .addOutput({ to: hexToBin(contracts.priceGuarded.lockingBytecode), amount: CONTRACT_SATS, token: priceUtxo.token! })
+        .addOutput({ to: keys.migration.lockingBytecode, amount: CONTRACT_SATS, token: keyToken })
+        .addOutput({ to: keys.funder.lockingBytecode, amount: change });
+      const inTotal = priceUtxo.satoshis + keyUtxo.satoshis + feeUtxo.satoshis;
+      const change = inTotal - 2n * CONTRACT_SATS - fee(make(DUST).getTransactionSize(), feeRate);
+      if (change < DUST) throw new Error(`migration ${k}: fee input too small (${feeUtxo.satoshis})`);
+      const builder = make(change);
+      builder.debug();
+      const hex = builder.build();
+      state.migrations[k] = { txid: txidOf(hex), hex, broadcast: false };
+      persist();
+      log(`price thread ${k} migration built: ${state.migrations[k]!.txid}`);
+    }
+    await send(state.migrations[k]!, `price migration ${k}`);
+  }
+
+  // ---- 5. deployment file ----
   const genesisTxIds: GenesisTxIds = {
     paryonTokenGenesisTxid: g.paryon.txid,
     poolTokenGenesisTxid: g.pool.txid,
@@ -255,6 +309,8 @@ export async function deployParyon(opts: DeployOptions): Promise<DeploymentFile>
     },
     genesisTxIds,
     categoryPrepTxIds: state.prep.map((p) => p.txid),
+    priceMigrationTxIds: (state.migrations ?? []).map((m) => m.txid),
+    livePriceContract: 'priceContractGuarded',
     counts: state.counts,
     initialPrice: state.initialPrice,
     migrationKeyHolder: keys.migration.tokenAddress(prefix),
@@ -300,7 +356,7 @@ async function main() {
     dryRun: args['dry-run'] === true,
   });
   console.log(`done. paryonTokenId=${file.tokenIds.paryonTokenId}`);
-  console.log(`price contract: ${file.contracts.priceContract?.address}`);
+  console.log(`live price contract (guarded): ${file.contracts.priceContractGuarded?.address}`);
   console.log(`funder unused sats remain at ${keys.funder.address('bchtest')}; locking ${binToHex(keys.funder.lockingBytecode)}`);
 }
 

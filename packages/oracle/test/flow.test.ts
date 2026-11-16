@@ -11,6 +11,40 @@ import {
   verifyPriceSignature,
 } from '../src/oracle.js';
 import { verifyDeployment } from '../src/verify.js';
+import { buildContracts, contractList } from '../src/paryon.js';
+import { addressToLockingBytecodeHex, buildParyonContracts, parseDeployment, PARYON_MAINNET_V1 } from '@sigsig/core';
+
+describe('contract scripts match mainnet-v1', () => {
+  // addresses observed in the 5 mainnet-v1 genesis txs and the 2026-10-08 price migration (block 972003)
+  const MAINNET: Record<string, string> = {
+    borrowing: 'pvszuucxz7fn4pthapvfk3xy8gxjhpvcm9yjt2przz44v5z2ax7v6alt8qj02',
+    priceContract: 'p023vgef20u202932zvv9plt28nsldsxfsrext4ccsvlfu7gyp4vun3d2rxy7',
+    priceContractGuarded: 'pdws0e456rwhzuxahv5jduryn493prvjrmu6ksegq052m5g048jp2tl4l6chh',
+    'loanFunction.liquidate': 'p06pkzj5w6jp5nf2836c7p7hj4curhy6t9nn6daj7zy7h5ana0w8uqt0f48ta',
+    'loanFunction.manage': 'pww8vdvl9g295z6cv3p957tgst80wgctlx8z8zrw90cyz6llgy00w8pz4987a',
+    'loanFunction.redeem': 'pwgy3z54632pqwcjt6emj2slcr3zx2ljdvucqtr4nmelpnt62cuuukvaw0m9e',
+    'loanFunction.startRedemption': 'pdt5j37f7w7g8xzpqvukkezj3a7pujvthseye5q3hfm8475tz3v9wqedsu2jt',
+    'loanFunction.swapInRedemption': 'pvmnlq0vh2f9fdqxj4k4qtnn0f2f9eh6keqrl8qgzu9kjffsnta7q858guw45',
+    'loanFunction.swapOutRedemption': 'p09kf5hjxaf3t4je9lntec9d0v35fxmrkyv4m3mll3qvsqaf08g2u9723ckjq',
+    'loanFunction.payInterest': 'p0vcl8sa6tpnwzaevs880gwud5utclyzml9rtpcprj6vhdntfenyygfgvcuuu',
+    'loanFunction.changeInterest': 'p0lq576jvw3s5rp8g2xxec3xa8h9fdklv3my0ugjrtavc4y07mky5c6j8vthy',
+    stabilityPool: 'pvhcyg25jgh9kglyhgx4x7zg0clctza4ctcw373halce03pnyshncxg796vdx',
+    stabilityPoolSidecar: 'pdl8y563h887re3r8g4sv76y29jt6vhtpzy9fc8qshmc8x30zjunj7cqx5ee3',
+    'poolFunction.addLiquidity': 'p0v6t3v2ft5cka62ewzp9wnw3ff8hve7yzrzqdvp20vf2wmykqqn5gu2w9q0n',
+    'poolFunction.liquidateLoan': 'pdfsvt88m9rm9u0vxpc33tqgcs0hrl2nc0j6tj497x06l0k7qtu0kgl4fzysr',
+    'poolFunction.newPeriodPool': 'pvm0l8pkmcqq3yck3l9tgzunnfahn87ppvdqtxtkf43t374edlqgy6kqh277s',
+    'poolFunction.withdrawFromPool': 'pda60jxpfzvzjfdn3kkgyk352qm5dp9k43fj5dgplmsapw3zkvkmjayjnh7m0',
+    collector: 'pwddtrsws6ppc4hwjccgvllmhhfnhdvh2ttzjjsc6a5q45punwezqup0ytups',
+    redeemer: 'pv9nj3e8w9fh32jt6j95wp7tp0tmfnuj6w4mptmg6zcn3w5yaq3vzwnh5tdlp',
+    loanKeyFactory: 'pw2yket7tfmat5asn70y73aq7epw7lwxyj44hu22swqa9cp9ep0fckf6n3h4w',
+  };
+  it('core buildParyonContracts + our pool functions reproduce every mainnet-v1 address', () => {
+    const list = new Map(contractList(buildContracts(PARYON_MAINNET_V1, new MockNetworkProvider())));
+    for (const [name, addr] of Object.entries(MAINNET)) {
+      expect(list.get(name)?.lockingBytecode, name).toBe(addressToLockingBytecodeHex(`bitcoincash:${addr}`));
+    }
+  });
+});
 
 const quiet = () => {};
 
@@ -50,7 +84,7 @@ describe('deploy Paryon into MockNetworkProvider, verify, update price', () => {
     const { keys, opts, provider } = await setup(MAINNET_COUNTS);
     const file = await deployParyon(opts);
 
-    expect(Object.keys(file.contracts)).toHaveLength(26);
+    expect(Object.keys(file.contracts)).toHaveLength(27); // 26 genesis contracts + PriceContractGuarded
     const state = JSON.parse(readFileSync(opts.statePath, 'utf8')) as DeployState;
     expect(state.done).toBe(true);
     expect(state.prep.every((p) => p.broadcast)).toBe(true);
@@ -59,7 +93,13 @@ describe('deploy Paryon into MockNetworkProvider, verify, update price', () => {
 
     await verifyDeployment(file, provider, { expectedOraclePubkey: keys.oracle.publicKeyHex, log: quiet });
 
+    // like mainnet since block 972003: all price threads live on PriceContractGuarded, none on PriceContract
+    expect(file.livePriceContract).toBe('priceContractGuarded');
+    expect(file.priceMigrationTxIds).toHaveLength(5);
     const priceContract = priceContractFor(file, provider);
+    expect(priceContract.lockingBytecode).toBe(file.contracts.priceContractGuarded!.lockingBytecode);
+    const legacy = buildParyonContracts(parseDeployment(file), provider).price;
+    expect(await readPriceUtxos(legacy, file.tokenIds.paryonTokenId)).toHaveLength(0);
     const before = await readPriceUtxos(priceContract, file.tokenIds.paryonTokenId);
     expect(before).toHaveLength(5);
     expect(before.every((p) => p.priceCents === 45_000 && p.seq === 0)).toBe(true);
@@ -92,6 +132,18 @@ describe('deploy Paryon into MockNetworkProvider, verify, update price', () => {
       provider, priceContract, paryonTokenId: file.tokenIds.paryonTokenId, oracleKey: newKey(),
       feeKey: keys.funder, feeAddress: keys.funder.address('bchtest'), newPriceCents: 30_000, log: quiet,
     })).rejects.toThrow(/checkDataSig|oracleSignature|PriceContract/i);
+  }, 60_000);
+
+  it('guarded contract enforces seq/deviation rules (tiny move with a non-heartbeat seq is rejected)', async () => {
+    const { keys, opts, provider } = await setup(LEAN_COUNTS);
+    const file = await deployParyon(opts);
+    const common = {
+      provider, priceContract: priceContractFor(file, provider), paryonTokenId: file.tokenIds.paryonTokenId,
+      oracleKey: keys.oracle, feeKey: keys.funder, feeAddress: keys.funder.address('bchtest'), log: quiet,
+    };
+    await expect(updatePrice({ ...common, newPriceCents: 45_010, forceSeq: 1 })).rejects.toThrow(/heartbeat|deviation/i);
+    await expect(updatePrice({ ...common, newPriceCents: 40_000, forceSeq: 0 })).rejects.toThrow(/more recent/i);
+    await expect(updatePrice({ ...common, newPriceCents: 45_010, forceSeq: 10 })).resolves.toBeTruthy();
   }, 60_000);
 
   it('is resumable: a broadcast failure halfway leaves a state file that the next run completes', async () => {

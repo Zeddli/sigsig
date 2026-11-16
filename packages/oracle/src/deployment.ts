@@ -1,7 +1,10 @@
-/** The deployments/<network>.json file format: a ParyonDeployment (bigints as JSON numbers) plus genesis txids. */
+/**
+ * The deployments/<network>.json file format: core's ParyonDeploymentJson (bigints as JSON numbers, read with
+ * core's `parseDeployment`) plus genesis/migration txids and an address map.
+ */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { NetworkName, ParyonDeployment } from '@sigsig/core';
+import { parseDeployment, type NetworkName, type ParyonDeployment } from '@sigsig/core';
 import type { GenesisCounts } from './paryon.js';
 import { REPO_ROOT } from './keys.js';
 
@@ -34,6 +37,13 @@ export interface DeploymentFile {
   genesisTxIds: GenesisTxIds;
   /** txids of the 5 funding txs whose vout 0 created each category (txid == token id) */
   categoryPrepTxIds: string[];
+  /**
+   * PriceContract → PriceContractGuarded migrations (migrateContract + migration key), one per price thread,
+   * as mainnet did on 2026-10-08 (block 972003). The live price threads sit at contracts.priceContractGuarded.
+   */
+  priceMigrationTxIds: string[];
+  /** which price contract code holds the live price threads */
+  livePriceContract: 'priceContractGuarded' | 'priceContract';
   counts: GenesisCounts;
   initialPrice: { seq: number; priceCents: number };
   migrationKeyHolder: string;
@@ -41,20 +51,7 @@ export interface DeploymentFile {
   deployedAt: string;
 }
 
-export function toParyonDeployment(f: DeploymentFile): ParyonDeployment {
-  return {
-    name: f.name,
-    network: f.network,
-    tokenIds: { ...f.tokenIds },
-    contractParams: {
-      oraclePublicKey: f.contractParams.oraclePublicKey,
-      protocolFeeLockingBytecode: f.contractParams.protocolFeeLockingBytecode,
-      startBlockHeight: BigInt(f.contractParams.startBlockHeight),
-      periodLengthBlocks: BigInt(f.contractParams.periodLengthBlocks),
-      timeLockRedemption: BigInt(f.contractParams.timeLockRedemption),
-    },
-  };
-}
+export const toParyonDeployment = (f: DeploymentFile): ParyonDeployment => parseDeployment(f);
 
 export function loadDeploymentFile(path: string): DeploymentFile {
   return JSON.parse(readFileSync(path, 'utf8')) as DeploymentFile;

@@ -4,14 +4,14 @@
  *   - works on raw tx hex (libauth decode) and lockingBytecode comparison, so it also runs on MockNetworkProvider;
  *   - the oracle key check compares with OUR ORACLE_WIF (if present) instead of General Protocols' key;
  *   - contract addresses are rebuilt from the file's tokenIds/params and compared with the file's `contracts` map;
- *   - additionally reports the live PriceContract state.
+ *   - additionally checks the PriceContract → PriceContractGuarded migrations and reports the live price state.
  *
  *   tsx src/verify.ts [--deployment deployments/chipnet.json]
  */
 import { binToHex } from '@bitauth/libauth';
 import type { NetworkProvider } from 'cashscript';
 import {
-  buildParyonContracts, contractList, LOAN_FUNCTION_COMMITMENTS, MAX_TOKEN_SUPPLY, POOL_FUNCTION_COMMITMENTS,
+  buildContracts, contractList, LOAN_FUNCTION_COMMITMENTS, MAX_TOKEN_SUPPLY, POOL_FUNCTION_COMMITMENTS,
 } from './paryon.js';
 import { defaultDeploymentPath, loadDeploymentFile, toParyonDeployment, type DeploymentFile } from './deployment.js';
 import { readPriceUtxos } from './oracle.js';
@@ -67,7 +67,7 @@ export async function verifyDeployment(
   const log = (m: string) => { lines.push(m); (opts.log ?? console.log)(m); };
   const dep = toParyonDeployment(file);
   const ids = dep.tokenIds;
-  const c = buildParyonContracts(ids, dep.contractParams, provider);
+  const c = buildContracts(dep, provider);
   const lb = (x: { lockingBytecode: string }) => x.lockingBytecode;
 
   // 0. oracle key and contract map
@@ -99,8 +99,8 @@ export async function verifyDeployment(
   const [paryonTx, poolTx, redeemerTx, lkfTx, migTx] = txs as [VTx, VTx, VTx, VTx, VTx];
 
   // 2. paryonTokenId genesis
-  const loanFnLbs = c.loanFunctions.map(lb);
-  const allowedParyon = [lb(c.borrowing), lb(c.priceContract), ...loanFnLbs];
+  const loanFnLbs = c.loanFunctionList.map(lb);
+  const allowedParyon = [lb(c.borrowing), lb(c.price), ...loanFnLbs];
   const counts = { borrowing: 0, price: 0, loanFunctions: 0 };
   const seenLoanFns = new Set<string>();
   let supply = 0n;
@@ -114,7 +114,7 @@ export async function verifyDeployment(
       supply += o.token!.amount;
       counts.borrowing++;
     }
-    if (o.lockingBytecode === lb(c.priceContract)) {
+    if (o.lockingBytecode === lb(c.price)) {
       expectNft(o, 'PriceContract', paryonTx.txid, 'mutable', (cm) => cm.length === 18 && cm.startsWith('00'));
       counts.price++;
     }
@@ -198,9 +198,39 @@ export async function verifyDeployment(
   }
   log('OK function NFTs only sit on their own function contracts, and those contracts hold only their function NFT');
 
-  // 8. live state
-  const prices = await readPriceUtxos(c.priceContract, ids.paryonTokenId);
-  log(`live: ${prices.length} PriceContract UTXO(s): ${prices.map((p) => `$${(p.priceCents / 100).toFixed(2)}@seq${p.seq}`).join(', ')}`);
+  // 8. PriceContract → PriceContractGuarded migrations (mainnet layout of 2026-10-08, block 972003)
+  const migIds = file.priceMigrationTxIds ?? [];
+  const genesisPriceOuts = paryonTx.outputs.filter((o) => o.lockingBytecode === lb(c.price));
+  const migrated = new Set<number>();
+  let keyOutpoint = `${migTx.txid}:${migTx.outputs.findIndex((o) => o.token?.category === ids.oracleMigrationKeyTokenId)}`;
+  for (const id of migIds) {
+    const tx = await fetchTx(provider, id);
+    const in0 = tx.inputs[0]!;
+    const src = in0.txid === paryonTx.txid ? genesisPriceOuts.find((o) => o.n === in0.vout) : undefined;
+    if (!src) fail(`migration ${id}: input 0 is not a genesis PriceContract output`);
+    if (`${tx.inputs[1]!.txid}:${tx.inputs[1]!.vout}` !== keyOutpoint) fail(`migration ${id}: input 1 is not the migration key`);
+    const out0 = tx.outputs[0]!;
+    if (out0.lockingBytecode !== lb(c.priceGuarded)) fail(`migration ${id}: output 0 is not PriceContractGuarded`);
+    if (out0.sats !== 1000n || out0.token?.category !== ids.paryonTokenId) fail(`migration ${id}: output 0 value/category`);
+    expectNft(out0, 'PriceContractGuarded', id, 'mutable', src.token!.nft!.commitment);
+    const keyOut = tx.outputs[1]!;
+    if (keyOut.token?.category !== ids.oracleMigrationKeyTokenId) fail(`migration ${id}: migration key not returned at output 1`);
+    keyOutpoint = `${id}:1`;
+    migrated.add(src.n);
+  }
+  if (migIds.length) {
+    if (migrated.size !== genesisPriceOuts.length) fail(`only ${migrated.size}/${genesisPriceOuts.length} price threads migrated`);
+    log(`OK all ${migrated.size} price threads migrated to PriceContractGuarded via migrateContract + migration key, state unchanged`);
+  }
+
+  // 9. live state: price threads only on the live contract
+  const live = file.livePriceContract === 'priceContract' ? c.price : c.priceGuarded;
+  const stale = file.livePriceContract === 'priceContract' ? c.priceGuarded : c.price;
+  const prices = await readPriceUtxos(live, ids.paryonTokenId);
+  const leftover = await readPriceUtxos(stale, ids.paryonTokenId);
+  if (leftover.length) fail(`${leftover.length} price thread(s) still on the non-live price contract ${stale.address}`);
+  if (prices.length !== genesisPriceOuts.length) fail(`expected ${genesisPriceOuts.length} live price threads at ${live.address}, found ${prices.length}`);
+  log(`live: ${prices.length} price thread(s) at ${live.address}: ${prices.map((p) => `$${(p.priceCents / 100).toFixed(2)}@seq${p.seq}`).join(', ')}`);
   return { ok: true, lines };
 }
 

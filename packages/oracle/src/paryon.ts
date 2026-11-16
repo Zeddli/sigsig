@@ -1,19 +1,21 @@
 /**
- * The 26 ParyonUSD contracts, built from the audited @paryonusd/contracts@1.1.0 artifacts with constructor
- * arguments that mirror ParyonUSD/verify_contract_deployment (contractAddresses.ts), plus the genesis-output plan
- * that mirrors the mainnet-v1 genesis transactions (one tx per token category).
+ * Paryon contracts for the deployer/oracle/verifier: core's `buildParyonContracts` (constructor args as in
+ * ParyonUSD/verify_contract_deployment/contractAddresses.ts) plus the 4 StabilityPool function contracts, and the
+ * genesis-output plan that mirrors the mainnet-v1 genesis transactions (one tx per token category).
  */
 import { Contract, type Artifact, type ConstructorArgument, type NetworkProvider, type Output } from 'cashscript';
 import { hexToBin } from '@bitauth/libauth';
 import { paryonArtifacts } from '@paryonusd/contracts';
-import type { ParyonDeployment } from '@sigsig/core';
+import {
+  buildParyonContracts, reverseHex, type AnyContract, type ParyonContracts as CoreParyonContracts, type ParyonDeployment,
+} from '@sigsig/core';
 
-export const reverseHex = (hex: string): string => (hex.match(/../g) ?? []).reverse().join('');
+export { reverseHex };
 
 /** int64 max: the full PUSD supply minted in the paryonTokenId genesis (split over the Borrowing threads). */
 export const MAX_TOKEN_SUPPLY = 9223372036854775807n;
 
-/** Loan function NFT commitments, same order as `loanFunctions` below (01 liquidate … 08 changeInterest). */
+/** Loan function NFT commitments, same order as LOAN_FUNCTION_NAMES (01 liquidate … 08 changeInterest). */
 export const LOAN_FUNCTION_COMMITMENTS = ['01', '02', '03', '04', '05', '06', '07', '08'] as const;
 export const LOAN_FUNCTION_NAMES = [
   'liquidate', 'manage', 'redeem', 'startRedemption', 'swapInRedemption', 'swapOutRedemption', 'payInterest', 'changeInterest',
@@ -46,99 +48,42 @@ export const STABILITY_POOL_SATS = 10_000n;
 export type TokenIds = ParyonDeployment['tokenIds'];
 export type ContractParams = ParyonDeployment['contractParams'];
 
-export interface ParyonContracts {
-  loan: Contract;
-  loanSidecar: Contract;
-  loanKeyOriginEnforcer: Contract;
-  borrowing: Contract;
-  priceContract: Contract;
-  loanFunctions: Contract[]; // order = LOAN_FUNCTION_NAMES
-  stabilityPool: Contract;
-  stabilityPoolSidecar: Contract;
-  payout: Contract;
-  collector: Contract;
-  poolFunctions: Contract[]; // order = POOL_FUNCTION_NAMES
-  redemption: Contract;
-  redemptionSidecar: Contract;
-  redeemer: Contract;
-  loanKeyOriginProof: Contract;
-  loanKeyFactory: Contract;
+export interface ParyonContracts extends CoreParyonContracts {
+  /** loan functions as an array, order = LOAN_FUNCTION_NAMES (commitments 01..08) */
+  loanFunctionList: AnyContract[];
+  /** pool functions (not in core), order = POOL_FUNCTION_NAMES (commitments 01..04) */
+  poolFunctions: AnyContract[];
 }
 
-const mk = (artifact: unknown, args: ConstructorArgument[], provider: NetworkProvider): Contract =>
-  new Contract(artifact as Artifact, args, { provider });
+const mk = (artifact: unknown, args: ConstructorArgument[], provider: NetworkProvider): AnyContract =>
+  new Contract(artifact as Artifact, args, { provider }) as unknown as AnyContract;
 
-/** Build all 26 contracts. Argument order and byte order copied from verify_contract_deployment/contractAddresses.ts. */
-export function buildParyonContracts(
-  tokenIds: TokenIds, params: ContractParams, provider: NetworkProvider,
-): ParyonContracts {
-  const { oraclePublicKey, protocolFeeLockingBytecode, startBlockHeight, periodLengthBlocks, timeLockRedemption } = params;
-  const { paryonTokenId, poolTokenId, redeemerTokenId, loanKeyFactoryTokenId, oracleMigrationKeyTokenId } = tokenIds;
-  const A = paryonArtifacts;
-  const LF = A.loanContractFunctions;
-  const SP = A.stabilityPool;
-  const PF = SP.poolContractFunctions;
-
-  // 1. paryonTokenId genesis contracts
-  const loan = mk(A.artifactLoan, [], provider);
-  const loanSidecar = mk(A.artifactLoanSidecar, [], provider);
-  const loanKeyOriginEnforcer = mk(A.loanKey.artifactLoanKeyOriginEnforcer,
-    [reverseHex(loanKeyFactoryTokenId), reverseHex(paryonTokenId)], provider);
-  const borrowing = mk(A.artifactBorrowing, [
-    loan.lockingBytecode, loanSidecar.lockingBytecode, protocolFeeLockingBytecode,
-    loanKeyOriginEnforcer.lockingBytecode, startBlockHeight, periodLengthBlocks,
-  ], provider);
-  const priceContract = mk(A.artifactPriceContract, [oraclePublicKey, reverseHex(oracleMigrationKeyTokenId)], provider);
-  const loanFunctions = [
-    mk(LF.artifactFunctionLiquidate, [reverseHex(poolTokenId)], provider),
-    mk(LF.artifactFunctionManage, [], provider),
-    mk(LF.artifactFunctionRedeem, [reverseHex(redeemerTokenId), timeLockRedemption, startBlockHeight, periodLengthBlocks], provider),
-    mk(LF.artifactFunctionStartRedemption, [reverseHex(redeemerTokenId)], provider),
-    mk(LF.artifactFunctionSwapInRedemption, [reverseHex(redeemerTokenId)], provider),
-    mk(LF.artifactFunctionSwapOutRedemption, [reverseHex(redeemerTokenId)], provider),
-    mk(LF.artifactFunctionPayInterest, [reverseHex(poolTokenId)], provider),
-    mk(LF.artifactFunctionChangeInterest, [], provider),
-  ];
-
-  // 2. poolTokenId genesis contracts
-  const stabilityPool = mk(SP.artifactStabilityPool, [], provider);
-  const stabilityPoolSidecar = mk(SP.artifactStabilityPoolSidecar, [reverseHex(paryonTokenId)], provider);
-  const payout = mk(SP.artifactPayout, [], provider);
-  const collector = mk(SP.artifactCollector, [reverseHex(paryonTokenId), protocolFeeLockingBytecode], provider);
+/** core's contracts + the 4 StabilityPool function contracts (args as in contractAddresses.ts). */
+export function buildContracts(deployment: ParyonDeployment, provider: NetworkProvider): ParyonContracts {
+  const core = buildParyonContracts(deployment, provider);
+  const { startBlockHeight, periodLengthBlocks } = deployment.contractParams;
+  const pid = reverseHex(deployment.tokenIds.paryonTokenId);
+  const PF = paryonArtifacts.stabilityPool.poolContractFunctions;
   const poolFunctions = [
-    mk(PF.artifactFunctionAddLiquidity, [reverseHex(paryonTokenId)], provider),
-    mk(PF.artifactFunctionLiquidateLoan, [reverseHex(paryonTokenId)], provider),
-    mk(PF.artifactFunctionNewPeriodPool, [payout.lockingBytecode, collector.lockingBytecode, startBlockHeight, periodLengthBlocks], provider),
+    mk(PF.artifactFunctionAddLiquidity, [pid], provider),
+    mk(PF.artifactFunctionLiquidateLoan, [pid], provider),
+    mk(PF.artifactFunctionNewPeriodPool,
+      [core.payout.lockingBytecode, core.collector.lockingBytecode, startBlockHeight, periodLengthBlocks], provider),
     mk(PF.artifactFunctionWithdrawFromPool, [], provider),
   ];
-
-  // 3. redeemerTokenId genesis contract
-  const redemptionSidecar = mk(A.redeemer.artifactRedemptionSidecar, [], provider);
-  const redemption = mk(A.redeemer.artifactRedemption, [reverseHex(paryonTokenId)], provider);
-  const redeemer = mk(A.redeemer.artifactRedeemer,
-    [reverseHex(paryonTokenId), redemption.lockingBytecode, redemptionSidecar.lockingBytecode], provider);
-
-  // 4. loanKeyFactoryTokenId genesis contract
-  const loanKeyOriginProof = mk(A.loanKey.artifactLoanKeyOriginProof, [], provider);
-  const loanKeyFactory = mk(A.loanKey.artifactLoanKeyFactory,
-    [loanKeyOriginEnforcer.lockingBytecode, loanKeyOriginProof.lockingBytecode], provider);
-
-  return {
-    loan, loanSidecar, loanKeyOriginEnforcer, borrowing, priceContract, loanFunctions,
-    stabilityPool, stabilityPoolSidecar, payout, collector, poolFunctions,
-    redemption, redemptionSidecar, redeemer, loanKeyOriginProof, loanKeyFactory,
-  };
+  const loanFunctionList = LOAN_FUNCTION_NAMES.map((n) => core.loanFunctions[n]);
+  return { ...core, loanFunctionList, poolFunctions };
 }
 
-/** Flat name → contract map (26 entries), used for chipnet.json and for the verifier. */
-export function contractList(c: ParyonContracts): Array<[string, Contract]> {
+/** Flat name → contract: the 26 genesis contracts plus PriceContractGuarded (the code the price threads migrate to). */
+export function contractList(c: ParyonContracts): Array<[string, AnyContract]> {
   return [
-    ['borrowing', c.borrowing], ['priceContract', c.priceContract], ['loan', c.loan], ['loanSidecar', c.loanSidecar],
-    ['loanKeyOriginEnforcer', c.loanKeyOriginEnforcer],
-    ...LOAN_FUNCTION_NAMES.map((n, i): [string, Contract] => [`loanFunction.${n}`, c.loanFunctions[i]!]),
+    ['borrowing', c.borrowing], ['priceContract', c.price], ['priceContractGuarded', c.priceGuarded],
+    ['loan', c.loan], ['loanSidecar', c.loanSidecar], ['loanKeyOriginEnforcer', c.loanKeyOriginEnforcer],
+    ...LOAN_FUNCTION_NAMES.map((n): [string, AnyContract] => [`loanFunction.${n}`, c.loanFunctions[n]]),
     ['stabilityPool', c.stabilityPool], ['stabilityPoolSidecar', c.stabilityPoolSidecar], ['payout', c.payout],
     ['collector', c.collector],
-    ...POOL_FUNCTION_NAMES.map((n, i): [string, Contract] => [`poolFunction.${n}`, c.poolFunctions[i]!]),
+    ...POOL_FUNCTION_NAMES.map((n, i): [string, AnyContract] => [`poolFunction.${n}`, c.poolFunctions[i]!]),
     ['redeemer', c.redeemer], ['redemption', c.redemption], ['redemptionSidecar', c.redemptionSidecar],
     ['loanKeyFactory', c.loanKeyFactory], ['loanKeyOriginProof', c.loanKeyOriginProof],
   ];
@@ -162,7 +107,7 @@ export function parsePriceCommitment(hex: string): { seq: number; priceCents: nu
   return { seq: b.readInt32LE(1), priceCents: b.readInt32LE(5) };
 }
 
-const lb = (c: Contract): Uint8Array => hexToBin(c.lockingBytecode);
+const lb = (c: AnyContract): Uint8Array => hexToBin(c.lockingBytecode);
 
 export type CategoryKey = 'paryon' | 'pool' | 'redeemer' | 'loanKeyFactory' | 'oracleMigrationKey';
 export const CATEGORY_ORDER: CategoryKey[] = ['paryon', 'pool', 'redeemer', 'loanKeyFactory', 'oracleMigrationKey'];
@@ -199,9 +144,9 @@ export function genesisOutputs(key: CategoryKey, p: GenesisPlanInput): Output[] 
         outs.push({ to: lb(c.borrowing), amount: CONTRACT_SATS, token: { category: cat, amount, nft: { capability: 'minting', commitment: '00000000' } } });
       }
       for (let i = 0; i < counts.priceContracts; i++) {
-        outs.push({ to: lb(c.priceContract), amount: CONTRACT_SATS, token: { category: cat, amount: 0n, nft: { capability: 'mutable', commitment: priceCommitment(p.initialPrice.seq, p.initialPrice.priceCents) } } });
+        outs.push({ to: lb(c.price), amount: CONTRACT_SATS, token: { category: cat, amount: 0n, nft: { capability: 'mutable', commitment: priceCommitment(p.initialPrice.seq, p.initialPrice.priceCents) } } });
       }
-      c.loanFunctions.forEach((fn, idx) => {
+      c.loanFunctionList.forEach((fn, idx) => {
         for (let i = 0; i < counts.loanFunctionCopies; i++) {
           outs.push({ to: lb(fn), amount: CONTRACT_SATS, token: { category: cat, amount: 0n, nft: { capability: 'none', commitment: LOAN_FUNCTION_COMMITMENTS[idx]! } } });
         }

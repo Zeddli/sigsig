@@ -11,11 +11,12 @@
  *
  * Message (16 bytes, all LE int32): timestamp | messageSeq | contentSeq | price (PUSD cents per BCH).
  * Signature: Schnorr over sha256(message) by ORACLE_WIF, i.e. what OP_CHECKDATASIG verifies.
- * PriceContract.updatePrice accepts it iff contentSeq > stored seq AND (contentSeq % 10 == 0 OR |Δprice| ≥ old/200).
+ * PriceContract(Guarded).updatePrice accepts it iff contentSeq > stored seq AND (contentSeq % 10 == 0 OR |Δprice| ≥ old/200).
  */
 import { secp256k1, sha256 } from '@bitauth/libauth';
-import { Contract, TransactionBuilder, type NetworkProvider, type Utxo } from 'cashscript';
-import { buildParyonContracts, CONTRACT_SATS, int32le, parsePriceCommitment, priceCommitment } from './paryon.js';
+import { TransactionBuilder, type NetworkProvider, type Utxo } from 'cashscript';
+import { buildParyonContracts, type AnyContract } from '@sigsig/core';
+import { CONTRACT_SATS, int32le, parsePriceCommitment, priceCommitment } from './paryon.js';
 import { loadKeys, type KeyPair } from './keys.js';
 import { defaultDeploymentPath, loadDeploymentFile, toParyonDeployment, type DeploymentFile } from './deployment.js';
 import { broadcast, chipnetProvider, isMain, parseArgs, prefixFor, sleep, txidOf } from './util.js';
@@ -51,7 +52,7 @@ export function nextContentSeq(current: { seq: number; priceCents: number }, new
 
 export interface PriceUtxo { utxo: Utxo; seq: number; priceCents: number }
 
-export async function readPriceUtxos(priceContract: Contract, paryonTokenId: string): Promise<PriceUtxo[]> {
+export async function readPriceUtxos(priceContract: AnyContract, paryonTokenId: string): Promise<PriceUtxo[]> {
   const utxos = await priceContract.getUtxos();
   return utxos
     .filter((u) => u.token?.category === paryonTokenId && u.token.nft?.capability === 'mutable')
@@ -66,13 +67,15 @@ export interface UpdateResult { txids: string[]; message: PriceMessage; feeUtxo?
  */
 export async function updatePrice(args: {
   provider: NetworkProvider;
-  priceContract: Contract;
+  priceContract: AnyContract;
   paryonTokenId: string;
   oracleKey: KeyPair;
   feeKey: KeyPair;
   feeAddress: string;
   newPriceCents: number;
   only?: number;
+  /** override the planned content sequence (tests: prove the contract enforces the rules) */
+  forceSeq?: number;
   timestamp?: number;
   feeRate?: number;
   log?: (m: string) => void;
@@ -87,11 +90,11 @@ export async function updatePrice(args: {
   if (args.only !== undefined) priceUtxos = [priceUtxos[args.only]!].filter(Boolean);
 
   // One message for all threads: its seq must beat the highest stored seq, and the deviation rule is checked
-  // against each thread's own stored price (threads that cannot accept it are skipped with a warning).
+  // against each thread's own stored price (if any thread would not accept a deviation update, use a heartbeat).
   const maxSeq = Math.max(...priceUtxos.map((p) => p.seq));
   const ref = priceUtxos.find((p) => p.seq === maxSeq)!;
-  let { seq } = nextContentSeq({ seq: maxSeq, priceCents: ref.priceCents }, args.newPriceCents);
-  if (priceUtxos.some((p) => !exceedsDeviation(p.priceCents, args.newPriceCents)) && seq % 10 !== 0) {
+  let { seq } = args.forceSeq !== undefined ? { seq: args.forceSeq } : nextContentSeq({ seq: maxSeq, priceCents: ref.priceCents }, args.newPriceCents);
+  if (args.forceSeq === undefined && priceUtxos.some((p) => !exceedsDeviation(p.priceCents, args.newPriceCents)) && seq % 10 !== 0) {
     seq = (Math.floor(maxSeq / 10) + 1) * 10; // heartbeat so lagging/unchanged threads accept it too
   }
   const message: PriceMessage = {
@@ -128,10 +131,13 @@ export async function updatePrice(args: {
   return { txids, message, feeUtxo };
 }
 
-/** Contract handle from a deployment file. */
-export function priceContractFor(file: DeploymentFile, provider: NetworkProvider): Contract {
-  const dep = toParyonDeployment(file);
-  return buildParyonContracts(dep.tokenIds, dep.contractParams, provider).priceContract;
+/**
+ * The contract holding the live price threads. Since mainnet's 2026-10-08 migration (and in our deployer) that is
+ * PriceContractGuarded; its updatePrice is byte-for-byte the same rule set as PriceContract's (only sharePrice differs).
+ */
+export function priceContractFor(file: DeploymentFile, provider: NetworkProvider): AnyContract {
+  const c = buildParyonContracts(toParyonDeployment(file), provider);
+  return (file.livePriceContract ?? 'priceContractGuarded') === 'priceContract' ? c.price : c.priceGuarded;
 }
 
 async function main() {
