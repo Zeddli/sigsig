@@ -1,0 +1,11 @@
+{
+ "page": "dist/index.html",
+ "url": null,
+ "root": "dist",
+ "kind": "software",
+ "category": "BCH treasury vaults that borrow ParyonUSD",
+ "primary": "Open the demo vault",
+ "rounds": 3,
+ "start": "2026-11-16T07:17:37.289Z",
+ "by": "gate.mjs --start"
+}

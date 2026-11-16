@@ -1,0 +1,5 @@
+[
+  { "check": "scroll-reveal", "target": "section#keeper > div.wrap > div.frame.s-diagram-frame > div.dg", "reason": "the kit's own diagram.js starts its pulse loop only while on screen (IntersectionObserver, diagrams.md 'It runs only on screen'); nothing is hidden or revealed, the diagram stands drawn at rest" },
+  { "check": "cut-text", "target": "div.dg-node.dg-node--tile:nth-of-type(1) > span.dg-cap > span.dg-cap__l", "reason": "the kit's diagram.js sets the phone caption under a 40px tile wider than the tile box; the label shows whole on the frame (see the 390 crop), no clipping" },
+  { "check": "hero-lines", "target": "section.hero h1", "reason": "the h1 is final (36 characters, 'BCH treasury vaults that borrow PUSD') and sets on 3 lines at 1440; only the 45-character stress fill takes 4 with the dealt Plex pairing, which DESIGN.md fixes" }
+]

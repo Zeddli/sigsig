@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- type: software (site-kind software, page type software): a fintech app for treasuries
+     deal (DESIGN.md, fixed 2026-11-13, not re-dealt): palette cool-grey-cobalt · type plex · radius sharp ·
+       hero split with the app window · nav-cards · footer-dark · close-word · rhythm dark-band · buttons solid ·
+       mark arc · ground topglow · effect none · moment iris-opens (1, the signer section)
+     voice: a treasury operator explaining the product to another operator: plain nouns, numbers with units, no hype -->
+<html lang="en" data-type="software" data-radius="sharp" data-ground="sky" data-buttons="solid" data-motion>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>sigsig: BCH treasury vaults that borrow ParyonUSD</title>
+<meta name="description" content="A covenant vault for DAOs and companies: it borrows PUSD against BCH, any keeper can defend it, and M-of-N signers pay only approved payees.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="sigsig: BCH treasury vaults that borrow ParyonUSD">
+<meta property="og:description" content="Borrow PUSD against BCH, let anyone defend the loan, and pay only approved payees.">
+<meta property="og:image" content="/share.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#eef0f3">
+<!-- <link rel="canonical" href="https://[the project's domain]/"> : add once the domain is known -->
+<meta name="site-kind" content="software">
+<meta name="page-type" content="software">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wdth,wght@85..100,400..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/system.css">
+<link rel="stylesheet" href="/assets/ui/cards.css">
+<link rel="stylesheet" href="/assets/motion/motion.css">
+<link rel="stylesheet" href="/assets/backgrounds/backgrounds.css">
+<link rel="stylesheet" href="/assets/layout/layout.css">
+<link rel="stylesheet" href="/assets/icons/icon.css">
+<style>
+:root {
+  --p-bg: #eef0f3; --p-surface: #e2e5ea; --p-ink: #0b0c0e; --p-muted: #5d6470;
+  --p-accent: #1f2de6; --p-accent-ink: #ffffff; --p-action: #1f2de6; --p-action-ink: #ffffff;
+  --p-inv-bg: #0b0c0e; --p-inv-surface: #17181a; --p-inv-ink: #eef0f3; --p-inv-muted: #8e8f92;
+  --p-inv-accent: #eef0f3; --p-inv-accent-ink: #0b0c0e; --p-inv-action: #eef0f3; --p-inv-action-ink: #0b0c0e;
+  --font-display: "IBM Plex Sans", system-ui, sans-serif;
+  --font-text: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --display-weight: 500;
+  --display-tracking: -0.025em;
+  --display-tracking-xl: -0.035em;
+  --ly-scale: 0.98;
+}
+</style>
+<link rel="stylesheet" href="/assets/ui/base.css">
+<link rel="stylesheet" href="/assets/diagrams/diagram.css">
+<!-- the hero's entrance and the moment guard: only on the landing (this file); app routes load app.html -->
+<script>document.documentElement.classList.add('m-enter');setTimeout(()=>document.documentElement.classList.add('m-enter-done'),700)</script>
+<script src="/assets/backgrounds/backgrounds.js"></script>
+<script>document.documentElement.classList.add('mo-js');setTimeout(()=>document.documentElement.classList.add('mo-safe'),2500)</script>
+<link rel="modulepreload" href="/assets/moments/moments.js">
+<link rel="modulepreload" href="/assets/moments/lib.js">
+<link rel="modulepreload" href="/assets/moments/iris-opens/moment.js">
+</head>
+<body>
+<div id="root"><!--app-html--></div>
+<script type="module" src="/src/main.tsx"></script>
+<!-- the kit's scripts run after the landing has hydrated (src/main.tsx loads them on "/") -->
+</body>
+</html>
