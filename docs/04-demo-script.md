@@ -46,8 +46,8 @@ This text goes in the DoraHacks submission and the README's "Mainnet demo" secti
    - **Demo payment** (always available): TODO. Describe the flow once the "any judge" tip path is decided
      (IMPLEMENTATION.md §2.7). It must work for any wallet with no setup.
    - **Run the keeper:** open `/keeper`. If the vault's CR is outside its band (defend below TODO %, skim above TODO %),
-     *Run defend* or *Run skim* is enabled. Read the decoded preview, sign, and the app shows the txid. You pay about
-     no fee: the vault pays the miner fee and sends the keeper reward to their address. If the CR is inside the band, the button is disabled and
+     *Run defend* or *Run skim* is enabled. Read the decoded preview and send; the app shows the txid. No signature or fee is needed:
+     the vault pays the miner fee and sends the keeper reward to the connected address. If the CR is inside the band, the button is disabled and
      says why; that refusal is the covenant's rule at work.
 4. **Read before you sign:** every request opens the decoded view first. Each output is labelled (vault, allowlisted
    payee, Paryon contract, burn, fee). An unknown output would block signing.
