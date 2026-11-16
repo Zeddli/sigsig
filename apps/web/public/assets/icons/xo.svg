@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 56" fill="none" role="img" aria-label="XO">
+    <defs>
+        <linearGradient id="xoOGradientLight" x1="74" y1="8" x2="112" y2="48" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#42B6F8" />
+            <stop offset="1" stop-color="#6686FF" />
+        </linearGradient>
+    </defs>
+    <path fill="#2B3038" d="M6 6h10.5L28 20.5 39.5 6H50L28 30.5 6 6z" />
+    <path fill="#42B6F8" d="M6 50h10.5L28 35.5V27.5L6 50z" />
+    <path fill="#6686FF" d="M50 50H39.5L28 35.5V27.5L50 50z" />
+    <circle
+        cx="93"
+        cy="28"
+        r="21.5"
+        stroke="#2B3038"
+        stroke-width="7"
+        fill="none"
+        stroke-dasharray="58.5 9"
+        stroke-dashoffset="4.5"
+    />
+    <circle cx="93" cy="28" r="14.5" fill="url(#xoOGradientLight)" />
+    <text
+        x="93"
+        y="28"
+        fill="#FFFFFF"
+        font-family="system-ui, -apple-system, Segoe UI, sans-serif"
+        font-size="16"
+        font-weight="700"
+        text-anchor="middle"
+        dominant-baseline="central"
+        transform="rotate(15 93 28)"
+    >₿</text>
+</svg>
