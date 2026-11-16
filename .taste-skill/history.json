@@ -1,0 +1,20 @@
+{
+  "palettes": [
+    "cool-grey-cobalt"
+  ],
+  "types": [
+    "plex"
+  ],
+  "dealt": [
+    "plex",
+    "mona",
+    "gabarito"
+  ],
+  "moments": [
+    {
+      "id": "iris-opens",
+      "at": "2026-11-13T15:15:57.147Z",
+      "seed": "7f5ae3f1"
+    }
+  ]
+}
