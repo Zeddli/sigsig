@@ -61,7 +61,7 @@ export function vaultConstructorArgs(params: VaultParams): [string, string, stri
 }
 
 export function createVaultContract(params: VaultParams, provider: NetworkProvider): VaultContract {
-  return new Contract(vaultArtifact, vaultConstructorArgs(params), { provider, addressType: 'p2sh32' });
+  return new Contract(vaultArtifact, vaultConstructorArgs(params), { provider, contractType: 'p2sh32' });
 }
 
 export interface VaultAddresses {

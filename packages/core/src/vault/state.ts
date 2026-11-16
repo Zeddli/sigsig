@@ -107,6 +107,26 @@ export function decodePolicy(commitment: string | Uint8Array): VaultPolicy {
 export const dayIndexForHeight = (height: number): number => Math.floor(height / 144);
 
 /**
+ * The amount `pay` charges against perPaymentMax / dailyBudget, in sats (one unit for both assets):
+ *   max(vault BCH in - vault BCH out, 0) + ceil(PUSD that left the vault * 1e8 / price)
+ * where price is the PriceContract price (PUSD cents per BCH) at input 1 of a PUSD payment.
+ * (The covenant computes ceil as (pusd*1e8 + price - 1) / price, clamped at 0 before the division.)
+ */
+export function paymentAmountSats(a: {
+  vaultBchIn: bigint; vaultBchOut: bigint; pusdIn?: bigint; pusdOut?: bigint; priceCents?: bigint;
+}): bigint {
+  const lost = a.vaultBchIn - a.vaultBchOut;
+  const pusd = (a.pusdIn ?? 0n) - (a.pusdOut ?? 0n);
+  let pusdSats = 0n;
+  if (pusd !== 0n) {
+    if (!a.priceCents || a.priceCents <= 0n) throw new Error('a PUSD payment needs the PriceContract price');
+    const num = pusd * 100_000_000n + a.priceCents - 1n;
+    pusdSats = num > 0n ? num / a.priceCents : 0n;
+  }
+  return (lost > 0n ? lost : 0n) + pusdSats;
+}
+
+/**
  * The state after a payment of `amountSats` at `locktime` (what `pay` requires on the recreated StateUTXO).
  * Throws when the covenant would reject it.
  */

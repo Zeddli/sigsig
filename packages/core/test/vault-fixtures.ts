@@ -16,6 +16,7 @@ import { createVaultContract, vaultArtifact, type VaultContract } from '../src/v
 import { encodeFixedVmNumber, encodePolicyHex } from '../src/vault/state.js';
 import { payeeRoot } from '../src/vault/payees.js';
 import type { VaultParams, VaultPolicy } from '../src/types.js';
+import { BURN_LOCKING_BYTECODE_HEX, NO_INTEREST_MANAGER } from '../src/paryon/constants.js';
 
 export const hex = binToHex;
 const reverseHex = (h: string): string => binToHex(hexToBin(h).reverse());
@@ -41,8 +42,8 @@ export function makeKey(label: string): Key {
 export const PRICE_SEQ = 100;
 export const LOAN_SATS = 1000n;
 export const MINER_FEE = 12_000n;
-export const BURN_BYTECODE = hexToBin('6a'); // Paryon's new LockingBytecodeNullData([0x]) encodes to a bare OP_RETURN
-export const IMC = '0000000000';
+export const BURN_BYTECODE = hexToBin(BURN_LOCKING_BYTECODE_HEX);
+export const IMC = NO_INTEREST_MANAGER;
 
 export const defaultPolicy = (root: string): VaultPolicy => ({
   version: 1,

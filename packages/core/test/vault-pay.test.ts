@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HashType, SignatureAlgorithm, SignatureTemplate, type TransactionBuilder } from 'cashscript';
-import { Env, evaluateInputs, verifyTx, type Key } from './vault-fixtures.js';
-import { payeeProof } from '../src/vault/payees.js';
+import { Env, evaluateInputs, makeKey, verifyTx, type Key } from './vault-fixtures.js';
+import { payeeProof, payeeRoot } from '../src/vault/payees.js';
 import type { VaultPolicy } from '../src/types.js';
 
 const DAY = 6000;
@@ -191,4 +191,16 @@ describe('Vault.pay', () => {
     const b = buildPay(env, { amount: 1_000_000n, sigs: env.sigs([null, null, env.signers[2]!]) });
     expect(evaluateInputs(env, b).every((x) => x.ok)).toBe(true);
   });
+
+  for (const count of [1, 2, 5, 8]) {
+    it(`verifies on-chain merkle proofs for every payee of a ${count}-payee allowlist (positive)`, () => {
+      const env = new Env();
+      env.payees = Array.from({ length: count }, (_, i) => makeKey(`list-${count}-${i}`));
+      env.policy = { ...env.policy, payeeRoot: payeeRoot(env.payees.map((p) => p.lockingBytecode)) };
+      for (const payee of env.payees) {
+        const b = buildPay(env, { amount: 100_000n, payee });
+        expect(evaluateInputs(env, b)[0], payee.address).toMatchObject({ ok: true });
+      }
+    });
+  }
 });
