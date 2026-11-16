@@ -5,15 +5,15 @@
  */
 import { describe, expect, it } from 'vitest';
 import { hexToBin } from '@bitauth/libauth';
-import type { VaultParams, VaultPolicy } from '../src/types.js';
+import type { VaultPolicy } from '../src/types.js';
 import { buildBorrow, buildCreateLoanKey } from '../src/tx/paryon.js';
 import {
-  buildDefend, buildPay, buildSkim, createPaymentRequest, createVaultTxContext, fetchVaultUtxos, signPayment,
+  buildCreateVaultState, buildDefend, buildPay, buildSkim, createPaymentRequest, createVaultTxContext, fetchVaultUtxos, signPayment,
   type VaultTxContext,
 } from '../src/tx/vault.js';
-import { encodePolicyHex, payeeRoot } from '../src/vault/index.js';
+import { payeeRoot } from '../src/vault/index.js';
 import { findLoanPair } from '../src/paryon/finders.js';
-import { id32, makeFixture, makeKey, MOCK_DEPLOYMENT, type Fixture } from './paryon-fixture.js';
+import { makeFixture, makeKey, MOCK_DEPLOYMENT, type Fixture } from './paryon-fixture.js';
 
 const signers = [makeKey('vs1'), makeKey('vs2'), makeKey('vs3')];
 const payeeA = makeKey('payee-a');
@@ -32,29 +32,28 @@ async function send(f: Fixture, built: { builder: { debug(): unknown }; txHex: s
   return f.provider.sendRawTransaction(built.txHex);
 }
 
-/** $400/BCH, 200 PUSD debt against 1 BCH (CR 200%), loanKey + PUSD in the vault, 0.5 BCH buffer. */
+/** $400/BCH: create loanKey -> mint the vault state (0.5 BCH buffer) -> borrow 200 PUSD against 1 BCH into the vault. */
 async function openVault(): Promise<{ f: Fixture; v: VaultTxContext }> {
   const f = makeFixture({ priceCents: 40_000n });
   const lk = await buildCreateLoanKey(f.ctx, { wallet: await f.wallet() });
   await send(f, lk);
-  const params: VaultParams = {
-    paryonTokenId: MOCK_DEPLOYMENT.tokenIds.paryonTokenId,
-    loanKeyCategory: lk.loanKeyCategory,
-    stateCategory: id32('vault-state'),
-    signerPubkeys: [signers[0]!.pubHex, signers[1]!.pubHex, signers[2]!.pubHex],
-    m: 2,
-  };
-  const v = createVaultTxContext(f.ctx, params);
+  const st = await buildCreateVaultState(f.ctx, {
+    params: {
+      paryonTokenId: MOCK_DEPLOYMENT.tokenIds.paryonTokenId,
+      loanKeyCategory: lk.loanKeyCategory,
+      signerPubkeys: [signers[0]!.pubHex, signers[1]!.pubHex, signers[2]!.pubHex],
+      m: 2,
+    },
+    policy, bufferSats: 50_000_000n, wallet: await f.wallet(),
+  });
+  await send(f, st);
+  const v = createVaultTxContext(f.ctx, st.params);
+  expect(st.vaultTokenAddress).toBe(v.vault.tokenAddress);
   const borrow = await buildBorrow(f.ctx, {
     loanKeyCategory: lk.loanKeyCategory, borrowCents: 20_000n, collateralSats: 100_000_000n, startingInterestRate: 0,
     wallet: await f.wallet(), loanKeyDestination: v.vault.tokenAddress, pusdDestination: hexToBin(v.vault.lockingBytecode),
   });
   await send(f, borrow);
-  // state NFT (minted in the setup tx in production)
-  f.provider.addUtxo(v.vault.lockingBytecode, {
-    txid: id32('state-genesis'), vout: 0, satoshis: 50_000_000n,
-    token: { category: params.stateCategory, amount: 0n, nft: { capability: 'mutable', commitment: encodePolicyHex(policy) } },
-  });
   return { f, v };
 }
 

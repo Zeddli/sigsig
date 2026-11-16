@@ -13,7 +13,7 @@ import { decodePolicy, encodePolicyHex, paymentAmountSats, policyAfterPayment } 
 import { payeeProof, toLockingBytecode } from '../vault/payees.js';
 import { fetchManageContext, findPriceUtxo, type LivePrice, type ManageLiveState } from '../paryon/finders.js';
 import { addManageParyonInputs, manageParyonOutputs, planManage, pusdBurnOutput, recreateOutput } from './paryon.js';
-import { finalizeBuiltTx, type ParyonBuiltTx, type ParyonContext } from './common.js';
+import { finalizeBuiltTx, selectBch, walletUnlocker, type FundingWallet, type ParyonBuiltTx, type ParyonContext } from './common.js';
 import { NO_INTEREST_MANAGER } from '../paryon/constants.js';
 
 /** Bytes the miner fee is computed from (1 sat/byte) plus a safety margin. */
@@ -338,4 +338,48 @@ export function paymentSighash(ctx: VaultTxContext, built: Pick<PaymentTx, 'txHe
 /** Sign a payment for one slot with a local key (demo signers, tests). Wallet signing produces the same bytes. */
 export function signPayment(ctx: VaultTxContext, built: Pick<PaymentTx, 'txHex' | 'sourceOutputs'>, key: SignatureTemplate): Uint8Array {
   return key.generateSignature(paymentSighash(ctx, built, key.getHashType()));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// setup: mint the vault's state NFT (one mutable NFT, no minting capability, so it can never be duplicated)
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface CreateVaultStateParams {
+  /** vault params without stateCategory (it is the txid of the wallet's vout-0 input, known before building) */
+  params: Omit<VaultParams, 'stateCategory'>;
+  policy: VaultPolicy;
+  /** initial buffer BCH held by the StateUTXO (>= 2000 sats) */
+  bufferSats: bigint;
+  wallet: FundingWallet;
+  feeRate?: number;
+}
+
+export interface CreateVaultStateResult extends ParyonBuiltTx {
+  params: VaultParams;
+  vaultAddress: string;
+  vaultTokenAddress: string;
+}
+
+/**
+ * Inputs: 0 wallet vout-0 UTXO (its txid becomes the state category), 1.. wallet BCH
+ * Outputs: 0 StateUTXO at the vault (mutable NFT, policy commitment, buffer BCH), 1 change
+ */
+export async function buildCreateVaultState(ctx: ParyonContext, p: CreateVaultStateParams): Promise<CreateVaultStateResult> {
+  if (p.bufferSats < 2000n) throw new Error('bufferSats must be at least 2000');
+  const vout0 = p.wallet.utxos.find((u) => u.vout === 0 && !u.token);
+  if (!vout0) throw new Error('Wallet needs a pure-BCH UTXO at output index 0 (send some BCH to yourself first)');
+  const params: VaultParams = { ...p.params, stateCategory: vout0.txid };
+  const v = createVaultTxContext(ctx, params);
+  const unlocker = walletUnlocker(p.wallet);
+  const need = p.bufferSats + 2_000n;
+  const extra = vout0.satoshis >= need ? [] : selectBch(p.wallet.utxos, need - vout0.satoshis, [vout0]);
+  const builder = new TransactionBuilder({ provider: ctx.provider })
+    .addInput(vout0, unlocker)
+    .addInputs(extra, unlocker)
+    .addOutput(stateOutput(v, p.bufferSats, p.policy))
+    .addBchChangeOutputIfNeeded({ to: p.wallet.address, feeRate: p.feeRate ?? 1 });
+  const built = finalizeBuiltTx(builder, ctx, `Create vault state (buffer ${p.bufferSats} sats)`, {
+    ...decodeCtxOf(v), changeAddresses: [p.wallet.address],
+  });
+  return { ...built, params, vaultAddress: v.vault.address, vaultTokenAddress: v.vault.tokenAddress };
 }
