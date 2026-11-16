@@ -79,8 +79,9 @@ small amounts on mainnet. Each day ends with something that can be demoed; if a 
 
 ### 2.7 Mainnet (day 8)
 - Use Paryon mainnet-v1 (IDs in docs/01). Vault: the smallest loan Paryon allows (100 PUSD of debt, about 160% CR),
-  funded by us. The buffer is small; the keeper fee cap is ≤ 2 000 sats.
-- **Judges' useful mainnet tx:** "Run keeper" (defend/skim when it applies; they pay a ~600-sat fee that is refunded via
+  funded by us. The buffer is small; the keeper fee cap is 20 000 sats (a defend/skim tx is ~8 KB because it carries
+  Paryon's scripts, so its miner fee is ~8 000 sats; the rest is the caller's reward).
+- **Judges' useful mainnet tx:** "Run keeper" (defend/skim when it applies; they pay nothing: the miner fee comes out of the vault, and the caller receives the rest of the fee claim. Refunded via
   `keeperFeeMax`), plus a demo **tip vault** whose payee allowlist includes an "any judge" path. Decide on day 6: either a
   1-of-1 vault the judge configures in the app, or a small faucet-style pay to the judge's address with a per-payment
   limit of 1 000 sats.

@@ -215,7 +215,15 @@ export function decodeTx(
 
   // --- payments: per-payment limit and daily budget ---
   const payments = outputs.filter((o) => o.label === 'payee');
-  const paymentAmount = (o: DecodedIo) => (o.tokenCategory === paryon && o.tokenAmount ? o.tokenAmount : o.sats);
+  // Same unit as the covenant: sats. A PUSD payment is valued at the PriceContract price, rounded up
+  // (Vault.pay: ceil(cents * 1e8 / price)); without a price it cannot be checked, so it fails closed.
+  const paymentAmount = (o: DecodedIo): bigint => {
+    if (o.tokenCategory === paryon && o.tokenAmount) {
+      if (!price || price <= 0n) return policy ? policy.perPaymentMax + 1n : 0n;
+      return (o.tokenAmount * 100_000_000n + price - 1n) / price;
+    }
+    return o.sats;
+  };
   if (policy && payments.length > 0) {
     const total = payments.reduce((s, o) => s + paymentAmount(o), 0n);
     for (const o of payments) {
@@ -223,7 +231,7 @@ export function decodeTx(
       checks.push({
         id: `per-payment-${o.index}`,
         ok: amt <= policy.perPaymentMax,
-        text: `Payment to ${o.name}: ${amt} ≤ per-payment max ${policy.perPaymentMax}`,
+        text: `Payment to ${o.name}: ${amt} sats ≤ per-payment max ${policy.perPaymentMax} sats`,
       });
     }
     const day = Math.floor(tx.locktime / 144);
@@ -231,7 +239,7 @@ export function decodeTx(
     checks.push({
       id: 'daily-budget',
       ok: spent <= policy.dailyBudget,
-      text: `Spent today after this payment: ${spent} of ${policy.dailyBudget} (day ${day})`,
+      text: `Spent today after this payment: ${spent} of ${policy.dailyBudget} sats (day ${day})`,
     });
   }
 

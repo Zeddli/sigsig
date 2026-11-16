@@ -115,7 +115,7 @@ chip (`Chipnet` amber, `Mainnet` ink).
 ### 5.3 Keeper (`/keeper`)
 A list of known vaults with CR, status and their available action. Each row has **Run defend** or **Run skim**; the button
 is disabled with a reason ("CR 164% is inside 130–200%") when the covenant would refuse. A preview drawer shows the tx
-decode (the same component as the signer view) and the fee: "You pay ~600 sats; the vault repays up to 2 000 sats".
+decode (the same component as the signer view) and the fee: "No wallet needed: the vault pays the ~8 000-sat miner fee; you receive up to 12 000 sats as the keeper reward".
 After broadcast: an inline "Sent" state with the txid, then the row's CR updates.
 
 ### 5.4 Pay (`/vaults/:id/pay`)

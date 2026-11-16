@@ -36,7 +36,7 @@ Recording notes:
 
 This text goes in the DoraHacks submission and the README's "Mainnet demo" section.
 
-**You need:** a BCH mainnet wallet that supports WizardConnect, holding about 2 000 sats for fees.
+**You need:** a BCH mainnet wallet that supports WizardConnect, (optional: defend/skim need no wallet funds; the vault pays the miner fee and the connected address receives the keeper reward).
 
 1. **Open the app:** TODO (live URL). The first screen is the live mainnet vault: CR, debt, collateral, buffer, and the
    last keeper transaction. Each number links to the UTXO it came from.
@@ -47,7 +47,7 @@ This text goes in the DoraHacks submission and the README's "Mainnet demo" secti
      (IMPLEMENTATION.md §2.7). It must work for any wallet with no setup.
    - **Run the keeper:** open `/keeper`. If the vault's CR is outside its band (defend below TODO %, skim above TODO %),
      *Run defend* or *Run skim* is enabled. Read the decoded preview, sign, and the app shows the txid. You pay about
-     600 sats; the vault pays back up to its keeper fee cap. If the CR is inside the band, the button is disabled and
+     no fee: the vault pays the miner fee and sends the keeper reward to their address. If the CR is inside the band, the button is disabled and
      says why; that refusal is the covenant's rule at work.
 4. **Read before you sign:** every request opens the decoded view first. Each output is labelled (vault, allowlisted
    payee, Paryon contract, burn, fee). An unknown output would block signing.
