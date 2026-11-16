@@ -1,0 +1,128 @@
+pragma cashscript ^0.13.0;
+
+// Redeem loan contract function
+// Is used by a redemption to finalize the redemption process, redeems ParyonUSD tokens for BCH collateral from loan
+// Any redemption still pending when a newer period starts can be cancelled
+// This is to prevent the free option problem
+
+/*  --- State Immutable NFT ---
+    byte identifier == 0x03
+*/
+
+contract redeemLoan(
+  bytes32 redemptionTokenId,
+  // Due to sequence-number encoding and BIP68 semantics, this value must be in the range 0..65535.
+  int timelockRedemption,
+  int startBlockHeight,
+  int periodLengthBlocks
+  ) {
+      // function redeemOrCancel
+      // Finalize redemption process, redeems ParyonUSD tokens for BCH collateral from loan
+      // If the redemption is still pending when a newer period starts, the redemption can be cancelled instead
+      // The redemption pays for the transaction fees (normally no external fee input required).
+      //
+      // Inputs: 00-loan, 01-loanTokenSidecar, 02-redeem, 03-redemption, 04-redemptionStateSidecar, 05-redemptionTokenSidecar, ?06-feeBch
+      // Outputs: 00-loan, 01-loanTokenSidecar, 02-redeem, 03-opreturn, 04-payoutRedemption, 05?-tokenChangeOutput, ?06-BchChange
+
+    function redeemOrCancel(){
+      // Require function to be at inputIndex 2
+      require(this.activeInputIndex == 2);
+      bytes paryonTokenId = tx.inputs[this.activeInputIndex].tokenCategory;
+
+      // Authenticate loan at inputIndex 0, nftCommitment checked later
+      require(tx.inputs[0].tokenCategory == paryonTokenId + 0x01);
+
+      // Authenticate redemption at inputIndex 3
+      require(tx.inputs[3].tokenCategory == redemptionTokenId + 0x01);
+
+      // Read state from redemption
+      bytes32 targetLoan, bytes redemptionAmountBytes = tx.inputs[3].nftCommitment.split(32);
+      // The pendingRedemptionAmount is counted as part of the "amountBeingRedeemed" in the loan state
+      int pendingRedemptionAmount = int(redemptionAmountBytes);
+
+      // Normally the pending redemption amount becomes the effective redemption amount during finalization
+      // However, if the redemption is cancelled, the effective redemption amount is set to zero
+      // So the effective redemption amount gets overwritten if the redemption is cancelled (in isInNewPeriod block)
+      int effectiveRedemptionAmount = pendingRedemptionAmount;
+
+      // Require target loan to match tokenid
+      require(tx.inputs[1].tokenCategory == targetLoan);
+
+      // Parse current period from loan contract
+      bytes4 lastPeriodInterestPaidBytes = tx.inputs[0].nftCommitment.slice(14,18);
+      int currentPeriodLoan = int(lastPeriodInterestPaidBytes);
+
+      // Require transaction version 2 to be able to use relative timelocks (sequenceNumber)
+      require(tx.version == 2);
+
+      // Check if the locktime is in a newer period than the current loan period
+      // Any redemption still running when the new period starts can be cancelled
+      int newPeriod = currentPeriodLoan + 1;
+      int blockHeightNewPeriod = startBlockHeight + newPeriod * periodLengthBlocks;
+      // We restrict locktime to below 500 million as values above are unix timestamps instead of block heights
+      bool isInNewPeriod = tx.locktime >= blockHeightNewPeriod && tx.locktime < 500_000_000;
+
+      // If the redemption is in a new period, cancel the redemption
+      if(isInNewPeriod){
+        // Require timelocks are enabled; see contract_safety.md "Locktime Enforcement"
+        require(tx.time >= 0);
+        // Cancel the redemption by setting effectiveRedemptionAmount to 0
+        // In this case no collateral is redeemed from the loan and no debt is repaid
+        effectiveRedemptionAmount = 0;
+      } else {
+        // Otherwise, proceed with the normal finalization of the redemption
+        // Enforce redemption timelock on redemption Utxo
+        int sequenceRedemptionInput = tx.inputs[3].sequenceNumber;
+        require(sequenceRedemptionInput == timelockRedemption);
+      }
+
+      // Read state from redemption sidecar
+      bytes redemptionPriceBytes = tx.inputs[4].nftCommitment.split(20)[1];
+      int redemptionPrice = int(redemptionPriceBytes);
+
+      // Calculate new loan collateral after redemption
+      // Use the effectiveRedemptionAmount which is 0 if the redemption is cancelled
+      int redeemedCollateral = effectiveRedemptionAmount * 100_000_000 / redemptionPrice;
+      int newLoanCollateral = tx.inputs[0].value - redeemedCollateral;
+
+      // Parse loan state, used to construct new loan commitment
+      bytes27 loanState = unsafe_bytes27(tx.inputs[0].nftCommitment);
+      bytes7 firstPartLoanState, bytes20 remainingPartLoanState = loanState.split(7);
+      byte identifier, bytes6 borrowedAmountBytes = firstPartLoanState.split(1);
+      require(identifier == 0x01);
+      bytes6 amountBeingRedeemed, bytes14 lastPartLoanState = remainingPartLoanState.split(6);
+
+      // Construct loan state after redemption (update debt and amountBeingRedeemed)
+      // the new state for amountBeingRedeemed is reduced by the pendingRedemptionAmount
+      int newAmountBeingRedeemed = int(amountBeingRedeemed) - pendingRedemptionAmount;
+      // the state for the new borrowedAmount is reduced by the effectiveRedemptionAmount
+      // thus if the redemption is cancelled, the borrowedAmount remains unchanged
+      int newBorrowAmount = int(borrowedAmountBytes) - effectiveRedemptionAmount;
+      bytes27 newLoanCommitment = 0x01 + toPaddedBytes(newBorrowAmount, 6) + toPaddedBytes(newAmountBeingRedeemed, 6) + lastPartLoanState;
+
+      // Recreate loan contract with new state and new collateral amount at output index 0
+      require(tx.outputs[0].nftCommitment == newLoanCommitment);
+      require(tx.outputs[0].value == newLoanCollateral);
+      require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+      require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+      require(tx.outputs[0].tokenAmount == 0);
+      
+      // Recreate functionContract at output index 2
+      require(tx.outputs[2].lockingBytecode == tx.inputs[2].lockingBytecode);
+      require(tx.outputs[2].nftCommitment == tx.inputs[2].nftCommitment);
+      require(tx.outputs[2].tokenCategory == tx.inputs[2].tokenCategory);
+      require(tx.outputs[2].value == 1000);
+      require(tx.outputs[2].tokenAmount == 0);
+
+      // Burn redeemed ParyonUSD by sending to unspendable opreturn output at index 3
+      require(tx.outputs[3].lockingBytecode == new LockingBytecodeNullData([0x]));
+      if(effectiveRedemptionAmount > 0){
+        require(tx.outputs[3].tokenCategory == paryonTokenId);
+        require(tx.outputs[3].tokenAmount == effectiveRedemptionAmount);
+      } else {
+        require(tx.outputs[3].tokenCategory == 0x);
+      }
+
+      // Logic for creating the redemption payout output and redemption token change is enforced by the redemption contract
+    }
+}

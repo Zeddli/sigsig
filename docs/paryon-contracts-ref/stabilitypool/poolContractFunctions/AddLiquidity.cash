@@ -1,0 +1,84 @@
+pragma cashscript ^0.13.0;
+
+// AddLiquidity pool contract function
+// Allows user to add ParyonUSD to the stabilityPool and receive a staking receipt NFT
+
+/*  --- State Immutable NFT ---
+    byte identifier == 0x01
+*/
+
+/*  --- State Staking Receipt Immutable NFT ---
+    bytes4 epochReceipt
+    bytes amountStakedReceipt (tokens)
+*/
+
+// minimumToStake = 100.00 ParyonUSD
+
+// Note: When staking, the epochReceipt is set to the next epoch (current epoch pool + 1)
+// Because of this, user cannot withdraw in the same epoch as they staked
+
+contract AddLiquidity(
+  bytes32 paryonTokenId
+  ) {
+      // function addToPool
+      // Allows users to add ParyonUSD to the stabilityPool and receive a staking receipt with staked amount & next epoch recorded.
+      //
+      // Inputs: 00-stabilityPool, 01-stabilityPoolSidecar, 02-addToPool, ??-feeBch, ??-userTokens
+      // Outputs: 00-stabilityPool, 01-stabilityPoolSidecar, 02-addToPool, 03-receipt, ??-changeTokens, ??-changeBch
+
+    function addToPool(){
+      // Require function to be at inputIndex 2
+      require(this.activeInputIndex== 2);
+      
+      // Authenticate stabilityPool at inputIndex 0 with minting NFT
+      bytes stabilityPoolTokenId = tx.inputs[this.activeInputIndex].tokenCategory;
+      require(tx.inputs[0].tokenCategory == stabilityPoolTokenId + 0x02);
+
+      // The StabilityPool itself enforces the same lockingBytecode & tokenCategory
+      // Pool functions need to enforce the nftCommitment & value (and tokenAmount in sidecar)
+
+      // Replicate StabilityPool value & nftCommitment
+      require(tx.outputs[0].value == tx.inputs[0].value, "Recreate contract at output0 - should have same BCH Balance");
+      require(tx.outputs[0].nftCommitment == tx.inputs[0].nftCommitment);
+
+      // Check added token amount is at least minimumToStake
+      // Only ParyonUSD tokens are allowed to be added to TokenSidecarPool (enforced by the StabilityPoolSidecar)
+      int addedTokenAmount = tx.outputs[1].tokenAmount - tx.inputs[1].tokenAmount;
+      require(addedTokenAmount >= 100_00);
+
+      // Recreate functionContract exactly
+      require(tx.outputs[2].lockingBytecode == tx.inputs[2].lockingBytecode);
+      require(tx.outputs[2].nftCommitment == tx.inputs[2].nftCommitment);
+      require(tx.outputs[2].tokenCategory == tx.inputs[2].tokenCategory);
+      require(tx.outputs[2].value == 1000);
+
+      // Parse stabilitypool state
+      bytes4 periodPoolBytes = tx.inputs[0].nftCommitment.split(4)[0];
+
+      // Calculate next epoch for receipt because withdrawals are only allowed from the next epoch
+      // Divide by 10 because there's 10 periods per epoch
+      int currentEpoch = int(periodPoolBytes) / 10;
+      int nextEpoch = currentEpoch + 1;
+
+      // Create Receipt output at outputIndex 3
+      require(tx.outputs[3].tokenCategory == stabilityPoolTokenId, "Invalid receipt, should have correct tokenId");
+      bytes newReceipt = toPaddedBytes(nextEpoch, 4) + bytes(addedTokenAmount);
+      require(tx.outputs[3].nftCommitment == newReceipt, "Invalid receipt, should have correct nftCommitment");
+      require(tx.outputs[3].value == 1000);
+
+      // Optionally create change output for tokens/bch at outputIndex 4
+      if (tx.outputs.length > 4) {
+        // should have paryonUsd tokens or no tokens at all
+        bool noTokenOrParyonTokens = tx.outputs[4].tokenCategory == 0x || tx.outputs[4].tokenCategory == paryonTokenId;
+        require(noTokenOrParyonTokens);
+      }
+
+      // Optionally create bch-change output at outputIndex 5
+      if (tx.outputs.length > 5) {
+        require(tx.outputs[5].tokenCategory == 0x, "Invalid BCH change output - should not hold any tokens");
+      }
+
+      // Don't allow more outputs to prevent minting extra NFTs
+      require(tx.outputs.length <= 6, "Invalid number of outputs - should have 6 at most");
+    }
+}
