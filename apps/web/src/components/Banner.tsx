@@ -15,8 +15,8 @@ const Ext = () => (
 export function Banner() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="s-banner" role="region" aria-label="BLAZE 2026">
-      <div className="wrap s-banner__bar">
+    <div className="s-banner wrap" role="region" aria-label="BLAZE 2026">
+      <div className="s-banner__bar">
         <p className="s-banner__credit">
           <span className="mark" data-mark="arc" aria-hidden="true"></span>
           <span>Built for {BLAZE.event}</span>
@@ -33,7 +33,7 @@ export function Banner() {
             {voteReady && <span className="mono s-hide-md" title={BLAZE.voteAddress}>{short(BLAZE.voteAddress, 4, 4)}</span>}
             {voteReady && <span className="s-hide-md"><CopyButton value={BLAZE.voteAddress} label="Copy vote address" tone="inverse" /></span>}
             <button type="button" className="s-banner__link s-banner__btn" onClick={() => setOpen(true)} aria-haspopup="dialog">
-              <span className="s-show-md">Vote</span><span className="s-hide-md">{voteReady ? 'QR' : 'Address'}</span>
+              <span className="s-show-md">Vote</span><span className="s-hide-md">{voteReady ? 'Show QR' : 'See the address'}</span>
             </button>
           </span>
         </p>

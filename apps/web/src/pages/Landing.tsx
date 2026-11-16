@@ -33,12 +33,12 @@ const KEEPER_DIAGRAM = JSON.stringify({
   layout: 'lanes',
   alt: 'A BCH price drop goes into the vault covenant, which accepts more collateral or a repayment from the buffer and refuses anything else.',
   curve: 'curve',
-  input: { label: 'BCH price', icon: 'ui:trending-down', meta: '$540 → $412' },
-  core: { label: 'Vault covenant', icon: 'ui:shield-check' },
+  input: { label: 'Price', icon: 'ui:trending-down', meta: '−24%' },
+  core: { label: 'Vault', icon: 'ui:shield-check' },
   lanes: [
-    { label: 'Add collateral', icon: 'ui:plus', meta: 'from buffer BCH', done: true },
-    { label: 'Repay debt', icon: 'ui:minus', meta: 'burn buffer PUSD', done: true },
-    { label: 'Refuse', icon: 'ui:x', meta: 'anything else' },
+    { label: 'Add BCH', icon: 'ui:plus', meta: 'buffer', done: true },
+    { label: 'Repay', icon: 'ui:minus', meta: 'PUSD', done: true },
+    { label: 'Refuse', icon: 'ui:x', meta: 'rest' },
   ],
 });
 
@@ -88,8 +88,8 @@ export function Landing() {
           <div className="wrap">
             <div className="hero-text grid hero__grid">
               <div className="hero__text span-5">
-                <h1 id="hero-h">Treasury vaults that borrow PUSD against BCH</h1>
-                <p className="hero__lead">Your BCH stays in a covenant that borrows ParyonUSD and pays only the payees your signers approved. Liquidation at 110%. Keeper can only add safety.</p>
+                <h1 id="hero-h">BCH treasury vaults that borrow PUSD</h1>
+                <p className="hero__lead">Your BCH stays in a covenant that borrows ParyonUSD and pays only approved payees. Liquidation at 110%. Keeper can only add safety.</p>
                 <div className="btn-row">
                   <a className="btn btn--primary" href={VAULT}>Open the demo vault<Arrow /></a>
                   <a className="btn btn--secondary" href="/keeper">Run the keeper</a>
@@ -119,7 +119,7 @@ export function Landing() {
                 <div className="ly-float s-loop" data-m-loop>
                   <div className="ly-float__row"><span className="ly-live">Keeper</span><span className="mono">block 960 288</span></div>
                   <ol className="s-loop__steps">
-                    <li className="s-loop__step s-loop__step--1"><span className="s-loop__dot" />Price drops to $412.40 · CR 126%</li>
+                    <li className="s-loop__step s-loop__step--1"><span className="s-loop__dot" />BCH falls 24% · CR 126%</li>
                     <li className="s-loop__step s-loop__step--2"><span className="s-loop__dot" />Defend tx adds 0.1230 BCH</li>
                     <li className="s-loop__step s-loop__step--3"><span className="s-loop__dot" />CR back to 150%, the target</li>
                   </ol>
@@ -132,9 +132,9 @@ export function Landing() {
         {/* 2. LOAN: split-text-left, the borrow form */}
         <section className="section" id="loan" aria-labelledby="loan-h">
           <div className="wrap">
-            <div className="grid fill s-split">
+            <div className="grid s-split">
               <div className="span-5 split-col">
-                <h2 id="loan-h">PUSD loans on Paryon's audited contracts</h2>
+                <h2 id="loan-h">PUSD loans against BCH on Paryon's contracts</h2>
                 <p className="t-lead">The vault holds a Paryon loan key, so the loan is an ordinary ParyonUSD loan with the same oracle, interest and 110% line.</p>
                 <ul className="s-facts">
                   <li>Price from the Paryon oracle, read on-chain</li>
@@ -143,7 +143,7 @@ export function Landing() {
                 </ul>
                 <a className="link split-col__end" href="/new">See the borrow step</a>
               </div>
-              <div className="frame frame--split frame--lit frame--fill span-6 start-7">
+              <div className="frame frame--split frame--square frame--lit span-6 start-7">
                 <div className="stage stage--fade-br">
                   <div className="at-corner to-edge" style={{ ['--ax' as string]: '56px', ['--ay' as string]: '56px' }}>
                     <div className="ui s-window s-window--form" role="img" aria-label="The borrow form: 0.7600 BCH collateral, 250.00 PUSD to borrow, price $540.12, max borrow 373.16 PUSD">
@@ -171,7 +171,7 @@ export function Landing() {
               <h2 id="keeper-h">Keepers anyone can run. <span className="muted">The covenant refuses everything else.</span></h2>
             </div>
             <div className="frame s-diagram-frame fill">
-              <div className="dg" data-diagram={KEEPER_DIAGRAM}></div>
+              <div className="dg" data-diagram={KEEPER_DIAGRAM} data-dg-still=""></div>
             </div>
           </div>
         </section>
@@ -179,9 +179,9 @@ export function Landing() {
         {/* 4. SPENDING RULES: split-text-left, the pay screen with its budget bar */}
         <section className="section" id="rules" aria-labelledby="rules-h">
           <div className="wrap">
-            <div className="grid fill s-split">
+            <div className="grid s-split">
               <div className="span-5 split-col">
-                <h2 id="rules-h">Spending rules the chain enforces</h2>
+                <h2 id="rules-h">Treasury spending rules the chain enforces</h2>
                 <p className="t-lead">Signers pay from the vault's PUSD, and the covenant checks every payment against the policy stored in its state NFT.</p>
                 <ul className="s-facts">
                   <li>Allowlist of up to 8 payees</li>
@@ -190,7 +190,7 @@ export function Landing() {
                 </ul>
                 <a className="link split-col__end" href={`${VAULT}/pay`}>See the pay screen</a>
               </div>
-              <div className="frame frame--split frame--lit frame--fill span-6 start-7">
+              <div className="frame frame--split frame--square frame--lit span-6 start-7">
                 <div className="stage stage--fade-br">
                   <div className="at-corner to-edge" style={{ ['--ax' as string]: '56px', ['--ay' as string]: '56px' }}>
                     <div className="ui s-window s-window--form" role="img" aria-label="The pay screen: Payroll — Ops, 30.00 PUSD, all four checks passed, 40 of 100 PUSD of today's budget spent">
@@ -219,9 +219,10 @@ export function Landing() {
         <section className="section ground-surface" id="signer" aria-labelledby="signer-h" data-moment="iris-opens" data-moment-opts='{"from": "base"}'>
           <div className="wrap">
             <div className="section-head s-head-row">
-              <h2 id="signer-h">Read the transaction, not the button</h2>
+              <h2 id="signer-h">Read the vault transaction, not the button</h2>
               <p className="s-head-row__p">Every input and output gets a name from the vault, the allowlist or Paryon. An unknown address blocks signing.</p>
             </div>
+            <div className="frame frame--lit s-sign-frame fill">
             <div className="ui s-window s-window--sign" role="img" aria-label="The signer view: pay 30.00 PUSD to Payroll — Ops; three inputs from the vault and Paryon's price contract, four outputs to the payee, the price contract and back to the vault; four checks passed">
               <div className="s-window__bar">
                 <span className="s-window__title">You are signing: Pay 30.00 PUSD to “Payroll — Ops”</span>
@@ -231,6 +232,7 @@ export function Landing() {
                 <DecodedTxView tx={signerExample()} interactive={false} raw={false} checksLabel="Checks, run again on-chain" />
               </div>
             </div>
+            </div>
           </div>
         </section>
 
@@ -238,12 +240,12 @@ export function Landing() {
         <section className="section" id="parts" aria-labelledby="parts-h">
           <div className="wrap">
             <div className="section-head">
-              <h2 id="parts-h">Built on Cermin, Wysiwys and Paryon. <span className="muted">Open source, MIT.</span></h2>
+              <h2 id="parts-h">The vault parts and their makers. <span className="muted">All open source.</span></h2>
             </div>
             <ul className="grid s-parts">
               {[
                 { name: 'Cermin', line: 'Vault, keeper and buffer, first built on Mezo', href: BLAZE.credit.url, img: '/assets/icons/cermin.png', tile: 'paper' },
-                { name: 'Wysiwys', line: 'The decoding signer view', href: LINKS.wysiwys, img: '/assets/icons/wysiwys-mark.webp', tile: 'ink' },
+                { name: 'Wysiwys', line: 'The decoding signer view', href: LINKS.wysiwys, img: '/assets/icons/wysiwys-mark.png', tile: 'ink' },
                 { name: 'ParyonUSD', line: 'The BCH stablecoin and its loans', href: LINKS.paryon, img: '/assets/icons/paryon.svg', tile: 'paper' },
                 { name: 'CashScript', line: 'The covenant language, 0.13', href: LINKS.cashscript, img: '/assets/icons/cashscript.png', tile: 'paper' },
                 { name: 'WizardConnect', line: 'Wallet pairing and signing', href: LINKS.wizardconnect, img: '/assets/icons/wizardconnect.png', tile: 'paper' },
@@ -251,7 +253,9 @@ export function Landing() {
               ].map((p) => (
                 <li key={p.name} className="span-4">
                   <a className="s-part" href={p.href} target="_blank" rel="noreferrer">
-                    <span className={`s-part__tile s-part__tile--${p.tile}`}><img src={p.img} alt="" width="40" height="40" loading="lazy" /></span>
+                    <span className={`s-part__panel s-part__panel--${p.tile}`} role="img" aria-label={`${p.name} logo`}>
+                      <img className="ic ic-56" src={p.img} alt="" width="56" height="56" loading="lazy" />
+                    </span>
                     <span className="s-part__text"><span className="t-card">{p.name}</span><span className="s-part__line">{p.line}</span></span>
                   </a>
                 </li>

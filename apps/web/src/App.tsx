@@ -20,6 +20,7 @@ export function App() {
       <WalletProvider>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/index.html" element={<Landing />} />
           <Route path="/vaults/:id" element={<AppShell><VaultDetail /></AppShell>} />
           <Route path="/vaults/:id/pay" element={<AppShell><Pay /></AppShell>} />
           <Route path="/sign/:requestId" element={<AppShell><Sign /></AppShell>} />

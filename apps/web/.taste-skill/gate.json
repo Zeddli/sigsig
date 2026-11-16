@@ -1,0 +1,478 @@
+{
+ "start": "2026-11-16T07:17:37.289Z",
+ "round": 3,
+ "idle": 0,
+ "errors": 0,
+ "status": "open",
+ "history": [
+  {
+   "at": "2026-11-16T14:46:53.310Z",
+   "mode": "manual",
+   "status": "fail",
+   "fails": 23,
+   "round": 1,
+   "reused": false,
+   "stopHookActive": false
+  },
+  {
+   "at": "2026-11-16T14:47:03.658Z",
+   "mode": "manual",
+   "status": "fail",
+   "fails": 23,
+   "round": 1,
+   "reused": true,
+   "stopHookActive": false
+  },
+  {
+   "at": "2026-11-16T14:57:26.184Z",
+   "mode": "manual",
+   "status": "fail",
+   "fails": 2,
+   "round": 2,
+   "reused": false,
+   "stopHookActive": false
+  },
+  {
+   "at": "2026-11-16T15:00:36.718Z",
+   "mode": "manual",
+   "status": "open",
+   "fails": 3,
+   "round": 3,
+   "reused": false,
+   "stopHookActive": false
+  }
+ ],
+ "max": 3,
+ "marker": {
+  "page": "dist/index.html",
+  "url": null,
+  "root": "dist",
+  "kind": "software",
+  "category": "BCH treasury vaults that borrow ParyonUSD",
+  "primary": "Open the demo vault",
+  "rounds": 3,
+  "start": "2026-11-16T07:17:37.289Z",
+  "by": "gate.mjs --start"
+ },
+ "manual": true,
+ "roundKey": "4f1eaeb6580611ef:179ef218",
+ "roundFree": false,
+ "idleFree": false,
+ "blockKey": null,
+ "fp": "4f1eaeb6580611ef",
+ "page": "dist/index.html",
+ "found": {
+  "fails": [
+   {
+    "check": "scroll-reveal",
+    "where": "section#keeper > div.wrap > div.frame.s-diagram-frame > div.dg \"Price −24% Vault Add BCH buffer Repay PU\"",
+    "msg": "starts \"color\" (0.9 s) the moment it is scrolled into view (an IntersectionObserver) on div.dg-node.dg-node--pill:nth-of-type(1)",
+    "fix": "show it at rest: no fade, rise or unmask when it is scrolled into view",
+    "widths": [
+     1440
+    ],
+    "from": "consistency",
+    "ids": [
+     "scroll-reveal"
+    ],
+    "wheres": [
+     "section#keeper > div.wrap > div.frame.s-diagram-frame > div.dg \"Price −24% Vault Add BCH buffer Repay PU\""
+    ]
+   },
+   {
+    "check": "tap-size",
+    "where": "div.s-banner.wrap > div.s-banner__bar > p.s-banner__credit > a.s-banner__link \"BCH re-implementation of Cermin\"",
+    "msg": "a 216x30px tap target: 2px from the next one (\"Deck\"), so a thumb lands on the wrong one",
+    "fix": "make every link and control outside running text 44px tall on a phone: display: inline-flex; align-items: center; min-height: 44px (a footer list then needs no gap), a 44px small button, or a transparent ::before laid past the box",
+    "widths": [
+     390,
+     320
+    ],
+    "from": "consistency",
+    "ids": [
+     "tap-size"
+    ],
+    "wheres": [
+     "div.s-banner.wrap > div.s-banner__bar > p.s-banner__credit > a.s-banner__link \"BCH re-implementation of Cermin\""
+    ]
+   },
+   {
+    "check": "tap-size",
+    "where": "div.s-banner.wrap > div.s-banner__bar > p.s-banner__links > a.s-banner__link:nth-of-type(1) \"Deck\"",
+    "msg": "a 47x30px tap target (and 1 more like it on this screen): 2px from the next one (\"BCH re-implementation of\"), so a thumb lands on the wrong one",
+    "fix": "make every link and control outside running text 44px tall on a phone: display: inline-flex; align-items: center; min-height: 44px (a footer list then needs no gap), a 44px small button, or a transparent ::before laid past the box",
+    "widths": [
+     390,
+     320
+    ],
+    "from": "consistency",
+    "ids": [
+     "tap-size"
+    ],
+    "wheres": [
+     "div.s-banner.wrap > div.s-banner__bar > p.s-banner__links > a.s-banner__link:nth-of-type(1) \"Deck\""
+    ]
+   },
+   {
+    "check": "tap-size",
+    "where": "div.s-banner__bar > p.s-banner__links > span.s-banner__vote > button.s-banner__link.s-banner__btn \"Vote\"",
+    "msg": "a 31x30px tap target: 2px from the next one (\"BCH re-implementation of\"), so a thumb lands on the wrong one",
+    "fix": "make every link and control outside running text 44px tall on a phone: display: inline-flex; align-items: center; min-height: 44px (a footer list then needs no gap), a 44px small button, or a transparent ::before laid past the box",
+    "widths": [
+     390,
+     320
+    ],
+    "from": "consistency",
+    "ids": [
+     "tap-size"
+    ],
+    "wheres": [
+     "div.s-banner__bar > p.s-banner__links > span.s-banner__vote > button.s-banner__link.s-banner__btn \"Vote\""
+    ]
+   },
+   {
+    "check": "cut-text",
+    "where": "div.dg-nodes > div.dg-node.dg-node--tile:nth-of-type(1) > span.dg-cap > span.dg-cap__l \"Price\"",
+    "msg": "runs past the edge of its box div.frame.s-diagram-frame > div.dg > div.dg-nodes > div.dg-node.dg-node--tile:nth-of-type(1) (and 3 more like it: \"Add BCH\", \"Repay\", \"Refuse\")",
+    "fix": "give the text room: no overflow clipping a line, no line past its box",
+    "widths": [
+     390
+    ],
+    "from": "consistency",
+    "ids": [
+     "cut-text"
+    ],
+    "wheres": [
+     "div.dg-nodes > div.dg-node.dg-node--tile:nth-of-type(1) > span.dg-cap > span.dg-cap__l \"Price\""
+    ]
+   },
+   {
+    "check": "hero-lines",
+    "where": "section.hero h1",
+    "msg": "the check fills the h1 to 45 characters (this hero's maxChars in heroes.json), not the page's own: it takes 4 lines at 1440, 3 at most",
+    "fix": "the check fills the h1 to this hero's maxChars, not your own: take the next type pairing the deal printed (start.mjs); when the h1 is final and fits, waive it (target: section.hero h1)",
+    "widths": [
+     1440
+    ],
+    "from": "layout",
+    "ids": [
+     "hero-lines"
+    ],
+    "wheres": [
+     "section.hero h1"
+    ]
+   }
+  ],
+  "warns": [
+   {
+    "check": "flush",
+    "where": "section#signer > div.mo-io__stage > div.mo-io__cover",
+    "msg": "its first line sits 17px under the top edge of section#signer, where the ground changes",
+    "fix": "give the section its padding at the edge where the ground changes (the closing call keeps a clear gap above the footer)",
+    "widths": [
+     1440
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "placeholder",
+    "where": "div.s-banner.wrap > div.s-banner__bar > p.s-banner__links > a.s-banner__link:nth-of-type(1) \"Deck\"",
+    "msg": "2 links go to a stand-in address (https://example.com/TODO-sigsig-deck)",
+    "fix": "put in the real address, domain and number before the page ships",
+    "widths": [
+     1440
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "cut-text",
+    "where": "div.s-window__body > div.s-decode > div.s-decode__checks > p.t-label.muted \"Checks, run again on-chain\"",
+    "msg": "cut 3px at the bottom by the overflow of section#signer > div.wrap > div.frame.frame--lit > div.ui.s-window (inside a held section or scroll scene, whose motion --quick does not check)",
+    "fix": "give the text room: no overflow clipping a line, no line past its box",
+    "widths": [
+     1440
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "text-contrast",
+    "where": "div.s-decode > div.s-decode__checks > ul.s-checks > li.s-check.s-check--plain \"· Network fee 1,620 sats\"",
+    "msg": "5 lines of text in drawn mocks read under 4.5:1 (2 colour pairs), the worst \"· Network fee 1,620 sats\" in #5d6470 on #c6d3df at 3.91:1",
+    "fix": "lift the mocks' muted text (labels, meta, initials) to 4.5:1 on their own panel, or set it larger",
+    "widths": [
+     1440
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "section-gaps",
+    "where": "section#loan / section#keeper",
+    "msg": "296px between these sections, +30% against the median 227px of gaps at a change of ground",
+    "fix": "use one gap between sections (all within 25% of each other)",
+    "widths": [
+     1440,
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "section-gaps",
+    "where": "section#rules / section#signer",
+    "msg": "158px between these sections, -30% against the median 227px of gaps at a change of ground",
+    "fix": "use one gap between sections (all within 25% of each other)",
+    "widths": [
+     1440,
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "section-gaps",
+    "where": "section#keeper / section#rules",
+    "msg": "uneven space at the edge of a band: 155px outside its edge, 72px inside it (the space on either side of a change of ground reads as one gap only when the two match)",
+    "fix": "use one gap between sections (all within 25% of each other)",
+    "widths": [
+     1440,
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "section-gaps",
+    "where": "section#signer / section#parts",
+    "msg": "uneven space at the edge of a band: 155px outside its edge, 72px inside it (the space on either side of a change of ground reads as one gap only when the two match)",
+    "fix": "use one gap between sections (all within 25% of each other)",
+    "widths": [
+     1440,
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "nav-family",
+    "where": "div#root > header.nav.s-nav",
+    "msg": "the nav's links come in 4 sizes (13, 22, 15, 16px)",
+    "fix": "keep one nav on every screen: the same bar, fill, links and type",
+    "widths": [
+     1440,
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "nav-labels",
+    "where": "div#root > header.nav.s-nav > div.wrap.nav__bar > a.nav__logo \"sigsig\"",
+    "msg": "\"sigsig\" opens a section headed \"BCH treasury vaults that borrow PUSD\"",
+    "fix": "name each nav link after the heading of the section it opens",
+    "widths": [
+     1440
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "progress-bar",
+    "where": "div.at-corner.to-edge > div.ui.s-window > div.s-window__body.s-form-mock > div.s-meter \"Payee Payroll — Ops Amount 30.00 PUSD Al\"",
+    "msg": "a progress or meter bar on the page, like the one in \"Payee Payroll — Ops Amount 30.\": the house rules have no drag or progress bars",
+    "fix": "show the figure in words or as a number (\"2 of 5 done\"), not as a bar that fills",
+    "widths": [
+     1440
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "skip-link",
+    "where": "div.s-banner.wrap:nth-of-type(1) > div.s-banner__bar > p.s-banner__credit:nth-of-type(1) > a.s-banner__link \"BCH re-implementation of Cermin (Mezo Ha\"",
+    "msg": "the first Tab stop is \"BCH re-implementation of Cermin (Mezo Hackathon 2)\", not a skip link: a keyboard user tabs through the whole nav on every visit",
+    "fix": "add the starter's skip link as the header's first child: <a class=\"skip-link\" href=\"#top\">Skip to content</a>",
+    "widths": [
+     1440
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "action-repeat",
+    "where": "header.nav.s-nav > div.wrap.nav__bar:nth-of-type(2) > div.nav__actions > a.btn.btn--primary \"open the demo vault\"",
+    "msg": "\"open the demo vault\" shows 2 times on the first screen at 1440px (nav, hero): the nav's button and the hero's; nothing else on the screen may repeat it",
+    "fix": "show the action once a screen besides the nav's button: the hero's, the close's or the phone bar's, never all at once",
+    "widths": [
+     1440
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "nav",
+    "where": "div#root > header.nav.s-nav > div.wrap.nav__bar > button.nav__toggle",
+    "msg": "the nav is lopsided: its last item ends 13px inside the content's edge (366px), while its first starts on the other edge",
+    "fix": "start the nav's first item and end its last on the content's two edges",
+    "widths": [
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "cut-text",
+    "where": "div.hero__media.span-6 > div.ui.s-window > div.s-window__bar > span.s-window__title \"Ops treasury\"",
+    "msg": "shortened with an ellipsis",
+    "fix": "give the text room: no overflow clipping a line, no line past its box",
+    "widths": [
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "cut-text",
+    "where": "div.ui.s-window > div.s-window__body.s-form-mock > div.s-window__row:nth-of-type(4) > span.muted \"Max borrow\"",
+    "msg": "cut 6px at the bottom by the overflow of section#loan > div.wrap > div.grid.s-split > div.frame.frame--split: a fragment run out through its panel's edge (and 1 more like it: \"373.17 PUSD\")",
+    "fix": "give the text room: no overflow clipping a line, no line past its box",
+    "widths": [
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "cut-text",
+    "where": "div.frame.frame--lit > div.ui.s-window > div.s-window__bar > span.s-window__title \"You are signing: Pay 30.00 PUSD to “Payr\"",
+    "msg": "cut 37px at the right by the overflow of div.wrap > div.frame.frame--lit > div.ui.s-window > div.s-window__bar (inside a held section or scroll scene, whose motion --quick does not check)",
+    "fix": "give the text room: no overflow clipping a line, no line past its box",
+    "widths": [
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "contrast",
+    "where": "div.s-decode > div.s-decode__checks > ul.s-checks > li.s-check.s-check--ok:nth-of-type(2) \"✓ Passed: ≤ 50.00 PUSD\"",
+    "msg": "body text over a picture reads at 1.0:1 at its worst tenth (needs 4.5:1), on a busy ground (inside a held section or scroll scene, whose motion --quick does not check)",
+    "fix": "put the text on a calm part of the picture, or on a solid panel",
+    "widths": [
+     390
+    ],
+    "from": "consistency"
+   },
+   {
+    "check": "text-contrast",
+    "where": "div.s-window__body > div.s-decode > div.s-decode__checks > p.t-label.muted \"Checks, run again on-chain\"",
+    "msg": "5 lines of text in drawn mocks read under 4.5:1 (2 colour pairs), the worst \"Checks, run again on-cha\" in #5d6470 on #c6d3df at 3.91:1",
+    "fix": "lift the mocks' muted text (labels, meta, initials) to 4.5:1 on their own panel, or set it larger",
+    "widths": [
+     390
+    ],
+    "from": "consistency"
+   }
+  ],
+  "crashed": [],
+  "seconds": {
+   "consistency": 99,
+   "layout": 4
+  }
+ },
+ "open": [
+  {
+   "check": "tap-size",
+   "where": "div.s-banner.wrap > div.s-banner__bar > p.s-banner__credit > a.s-banner__link \"BCH re-implementation of Cermin\"",
+   "msg": "a 216x30px tap target: 2px from the next one (\"Deck\"), so a thumb lands on the wrong one",
+   "fix": "make every link and control outside running text 44px tall on a phone: display: inline-flex; align-items: center; min-height: 44px (a footer list then needs no gap), a 44px small button, or a transparent ::before laid past the box",
+   "widths": [
+    390,
+    320
+   ],
+   "from": "consistency",
+   "ids": [
+    "tap-size"
+   ],
+   "wheres": [
+    "div.s-banner.wrap > div.s-banner__bar > p.s-banner__credit > a.s-banner__link \"BCH re-implementation of Cermin\""
+   ]
+  },
+  {
+   "check": "tap-size",
+   "where": "div.s-banner.wrap > div.s-banner__bar > p.s-banner__links > a.s-banner__link:nth-of-type(1) \"Deck\"",
+   "msg": "a 47x30px tap target (and 1 more like it on this screen): 2px from the next one (\"BCH re-implementation of\"), so a thumb lands on the wrong one",
+   "fix": "make every link and control outside running text 44px tall on a phone: display: inline-flex; align-items: center; min-height: 44px (a footer list then needs no gap), a 44px small button, or a transparent ::before laid past the box",
+   "widths": [
+    390,
+    320
+   ],
+   "from": "consistency",
+   "ids": [
+    "tap-size"
+   ],
+   "wheres": [
+    "div.s-banner.wrap > div.s-banner__bar > p.s-banner__links > a.s-banner__link:nth-of-type(1) \"Deck\""
+   ]
+  },
+  {
+   "check": "tap-size",
+   "where": "div.s-banner__bar > p.s-banner__links > span.s-banner__vote > button.s-banner__link.s-banner__btn \"Vote\"",
+   "msg": "a 31x30px tap target: 2px from the next one (\"BCH re-implementation of\"), so a thumb lands on the wrong one",
+   "fix": "make every link and control outside running text 44px tall on a phone: display: inline-flex; align-items: center; min-height: 44px (a footer list then needs no gap), a 44px small button, or a transparent ::before laid past the box",
+   "widths": [
+    390,
+    320
+   ],
+   "from": "consistency",
+   "ids": [
+    "tap-size"
+   ],
+   "wheres": [
+    "div.s-banner__bar > p.s-banner__links > span.s-banner__vote > button.s-banner__link.s-banner__btn \"Vote\""
+   ]
+  }
+ ],
+ "waived": [
+  {
+   "check": "scroll-reveal",
+   "where": "section#keeper > div.wrap > div.frame.s-diagram-frame > div.dg \"Price −24% Vault Add BCH buffer Repay PU\"",
+   "msg": "starts \"color\" (0.9 s) the moment it is scrolled into view (an IntersectionObserver) on div.dg-node.dg-node--pill:nth-of-type(1)",
+   "fix": "show it at rest: no fade, rise or unmask when it is scrolled into view",
+   "widths": [
+    1440
+   ],
+   "from": "consistency",
+   "ids": [
+    "scroll-reveal"
+   ],
+   "wheres": [
+    "section#keeper > div.wrap > div.frame.s-diagram-frame > div.dg \"Price −24% Vault Add BCH buffer Repay PU\""
+   ],
+   "reason": "the kit's own diagram.js starts its pulse loop only while on screen (IntersectionObserver, diagrams.md 'It runs only on screen'); nothing is hidden or revealed, the diagram stands drawn at rest"
+  },
+  {
+   "check": "cut-text",
+   "where": "div.dg-nodes > div.dg-node.dg-node--tile:nth-of-type(1) > span.dg-cap > span.dg-cap__l \"Price\"",
+   "msg": "runs past the edge of its box div.frame.s-diagram-frame > div.dg > div.dg-nodes > div.dg-node.dg-node--tile:nth-of-type(1) (and 3 more like it: \"Add BCH\", \"Repay\", \"Refuse\")",
+   "fix": "give the text room: no overflow clipping a line, no line past its box",
+   "widths": [
+    390
+   ],
+   "from": "consistency",
+   "ids": [
+    "cut-text"
+   ],
+   "wheres": [
+    "div.dg-nodes > div.dg-node.dg-node--tile:nth-of-type(1) > span.dg-cap > span.dg-cap__l \"Price\""
+   ],
+   "reason": "the kit's diagram.js sets the phone caption under a 40px tile wider than the tile box; the label shows whole on the frame (see the 390 crop), no clipping"
+  },
+  {
+   "check": "hero-lines",
+   "where": "section.hero h1",
+   "msg": "the check fills the h1 to 45 characters (this hero's maxChars in heroes.json), not the page's own: it takes 4 lines at 1440, 3 at most",
+   "fix": "the check fills the h1 to this hero's maxChars, not your own: take the next type pairing the deal printed (start.mjs); when the h1 is final and fits, waive it (target: section.hero h1)",
+   "widths": [
+    1440
+   ],
+   "from": "layout",
+   "ids": [
+    "hero-lines"
+   ],
+   "wheres": [
+    "section.hero h1"
+   ],
+   "reason": "the h1 is final (36 characters, 'BCH treasury vaults that borrow PUSD') and sets on 3 lines at 1440; only the 45-character stress fill takes 4 with the dealt Plex pairing, which DESIGN.md fixes"
+  }
+ ],
+ "warnCount": 19,
+ "at": "2026-11-16T15:00:36.718Z",
+ "openTold": true
+}

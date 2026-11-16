@@ -37,11 +37,13 @@ export function CrGauge({ crBps, status, policy, compact = false }: { crBps: num
         {crBps !== null && <span className="s-gauge__pin" style={{ left: at(crBps) }} aria-hidden="true" />}
       </div>
       <div className="s-gauge__scale" aria-hidden="true">
-        <span style={{ left: at(11_000) }}>110</span>
-        <span style={{ left: at(policy.defendCrBps) }}>defend {policy.defendCrBps / 100}</span>
-        <span style={{ left: at(policy.targetCrBps) }}>target {policy.targetCrBps / 100}</span>
-        <span style={{ left: at(policy.skimCrBps) }}>skim {policy.skimCrBps / 100}</span>
+        <span style={{ left: at(policy.defendCrBps) }}>{policy.defendCrBps / 100}</span>
+        <span style={{ left: at(policy.targetCrBps) }}>{policy.targetCrBps / 100}</span>
+        <span style={{ left: at(policy.skimCrBps) }}>{policy.skimCrBps / 100}</span>
       </div>
+      <p className="s-gauge__legend" aria-hidden="true">
+        defend {policy.defendCrBps / 100} · target {policy.targetCrBps / 100} · skim {policy.skimCrBps / 100} · liquidation under 110, hatched
+      </p>
     </div>
   );
 }
