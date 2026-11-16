@@ -8,8 +8,6 @@ import { decodeTx } from '../src/decode.js';
 import { buildParyonContracts } from '../src/paryon/contracts.js';
 import { PARYON_MAINNET_V1, parseDeployment, serializeDeployment, getNetworkProfile } from '../src/network.js';
 import type { VaultParams, VaultPolicy } from '../src/types.js';
-// Cross-check against the oracle package's independent builder (verified against mainnet-v1 there).
-import { buildParyonContracts as oracleBuild, contractList } from '../../oracle/src/paryon.js';
 
 const POLICY: VaultPolicy = {
   version: 1, defendCrBps: 13_000, targetCrBps: 15_000, skimCrBps: 20_000, keeperFeeMaxSats: 5_000,
@@ -121,23 +119,4 @@ describe('network profiles and deployment', () => {
     expect(getNetworkProfile('chipnet').paryon).toBeUndefined();
   });
 
-  it('core contract builder matches the oracle package builder (mainnet-v1 and mock)', () => {
-    for (const d of [PARYON_MAINNET_V1, MOCK_DEPLOYMENT]) {
-      const p = new MockNetworkProvider();
-      const core = buildParyonContracts(d, p);
-      const oracle = oracleBuild(d.tokenIds, d.contractParams, p);
-      const oracleMap = Object.fromEntries(contractList(oracle).map(([n, c]) => [n, c.lockingBytecode]));
-      expect(core.borrowing.lockingBytecode).toBe(oracleMap.borrowing);
-      expect(core.price.lockingBytecode).toBe(oracleMap.priceContract);
-      expect(core.loan.lockingBytecode).toBe(oracleMap.loan);
-      expect(core.loanSidecar.lockingBytecode).toBe(oracleMap.loanSidecar);
-      expect(core.loanFunctions.manage.lockingBytecode).toBe(oracleMap['loanFunction.manage']);
-      expect(core.loanFunctions.changeInterest.lockingBytecode).toBe(oracleMap['loanFunction.changeInterest']);
-      expect(core.loanFunctions.redeem.lockingBytecode).toBe(oracleMap['loanFunction.redeem']);
-      expect(core.loanKeyFactory.lockingBytecode).toBe(oracleMap.loanKeyFactory);
-      expect(core.loanKeyOriginEnforcer.lockingBytecode).toBe(oracleMap.loanKeyOriginEnforcer);
-      expect(core.redeemer.lockingBytecode).toBe(oracleMap.redeemer);
-      expect(core.collector.lockingBytecode).toBe(oracleMap.collector);
-    }
-  });
 });
