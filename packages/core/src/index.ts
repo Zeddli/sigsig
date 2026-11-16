@@ -10,4 +10,5 @@ export * from './paryon/codec.js';
 export * from './paryon/finders.js';
 export * from './tx/common.js';
 export * from './tx/paryon.js';
+export * from './tx/vault.js';
 export * from './vault/index.js';
