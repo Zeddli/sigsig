@@ -40,10 +40,30 @@ export async function createRuntime(
   return { config, reader, builders, chain, wallet };
 }
 
-async function defaultLoadCore(_config: KeeperConfig): Promise<CorePorts> {
-  // TODO(wiring): e.g.
-  //   const core = await import('@sigsig/core');
-  //   const provider = new ElectrumNetworkProvider(config.network, ...);
-  //   return { reader: core.createVaultReader(provider, deployment), builders: adaptCoreBuilders(core, provider) };
-  throw new Error('KEEPER_BACKEND=core is not wired yet: @sigsig/core does not export VaultReader/buildDefend/buildSkim. Use KEEPER_BACKEND=fake.');
+async function defaultLoadCore(config: KeeperConfig): Promise<CorePorts> {
+  const core = await import('@sigsig/core');
+  const profile = await core.loadNetworkProfile(config.network, process.env.KEEPER_CHIPNET_DEPLOYMENT);
+  if (config.electrumHost) profile.electrumServers = [config.electrumHost, ...profile.electrumServers];
+  if (!profile.paryon) throw new Error(`No Paryon deployment for ${config.network} (chipnet: run packages/oracle deploy first)`);
+  const provider = core.createProvider(profile);
+  const ctx = core.createParyonContext(config.network, profile.paryon, provider);
+  const reader = new core.ElectrumVaultReader({ network: config.network, deployment: profile.paryon, provider, vault: core.vaultAdapter });
+  const builders: KeeperBuilders = {
+    async buildDefend(vault, _health, funding, plan) {
+      const r = await core.buildDefend(core.createVaultTxContext(ctx, vault), {
+        repayCents: plan.repayCents, addCollateralSats: plan.addCollateralSats, feeClaimSats: plan.feeClaimSats, rewardTo: funding.address,
+      });
+      return r;
+    },
+    async buildSkim(vault, _health, funding, plan) {
+      return core.buildSkim(core.createVaultTxContext(ctx, vault), {
+        withdrawSats: plan.withdrawSats, feeClaimSats: plan.feeClaimSats, rewardTo: funding.address,
+      });
+    },
+    async vaultAddresses(vault) {
+      const v = core.createVaultTxContext(ctx, vault).vault;
+      return [v.address, v.tokenAddress];
+    },
+  };
+  return { reader, builders };
 }

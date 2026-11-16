@@ -126,7 +126,7 @@ export interface LoadConfigOptions {
  *   KEEPER_ELECTRUM_HOST  Fulcrum host override
  *   KEEPER_MAX_FEE_SATS   operator fee ceiling (vault's keeperFeeMax still applies)
  *   KEEPER_MIN_DEBT_CENTS, KEEPER_STATE_MIN_SATS, KEEPER_MIN_SKIM_SATS   decision tuning
- *   KEEPER_DEFEND_TX_BYTES (default 2500), KEEPER_SKIM_TX_BYTES (default 2300), KEEPER_FEE_RATE (default 1 sat/B)
+ *   KEEPER_DEFEND_TX_BYTES (default 8500), KEEPER_SKIM_TX_BYTES (default 8000), KEEPER_FEE_RATE (default 1 sat/B)
  *   KEEPER_STATE_FILE (default .keeper-state.json), KEEPER_LOCK_FILE (default .keeper.lock)
  */
 export function loadConfig(env: Env, opts: LoadConfigOptions = {}): KeeperConfig {
@@ -177,8 +177,8 @@ export function loadConfig(env: Env, opts: LoadConfigOptions = {}): KeeperConfig
       minSkimSats: bigintOr(env, 'KEEPER_MIN_SKIM_SATS', DEFAULT_DECIDE_OPTIONS.minSkimSats),
     },
     txBytes: {
-      defend: posInt(env, 'KEEPER_DEFEND_TX_BYTES', 2500),
-      skim: posInt(env, 'KEEPER_SKIM_TX_BYTES', 2300),
+      defend: posInt(env, 'KEEPER_DEFEND_TX_BYTES', 8500),
+      skim: posInt(env, 'KEEPER_SKIM_TX_BYTES', 8000),
     },
     fallbackFeeRateSatPerByte: posInt(env, 'KEEPER_FEE_RATE', 1),
     stateFile: env.KEEPER_STATE_FILE || '.keeper-state.json',
