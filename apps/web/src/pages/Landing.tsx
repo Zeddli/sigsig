@@ -52,13 +52,14 @@ function signerExample(): BuiltTx {
       title: 'Pay 30.00 PUSD to Payroll — Ops',
       inputs: [
         { index: 0, label: 'vault-state', name: 'Vault state', address: v.address, sats: v.buffer.sats },
-        { index: 1, label: 'vault-pusd', name: 'Vault PUSD', address: v.address, sats: 1_000n, tokenAmount: v.buffer.pusdCents, tokenCategory: v.params.paryonTokenId },
-        { index: 2, label: 'fee', name: 'Fee input', address: v.payees[1].address, sats: 10_000n },
+        { index: 1, label: 'paryon-price', name: 'Paryon price', sats: 1_000n },
+        { index: 2, label: 'vault-pusd', name: 'Vault PUSD', address: v.address, sats: 1_000n, tokenAmount: v.buffer.pusdCents, tokenCategory: v.params.paryonTokenId },
       ],
       outputs: [
         { index: 0, label: 'payee', name: v.payees[0].label, address: v.payees[0].address, sats: 1_000n, tokenAmount: amount, tokenCategory: v.params.paryonTokenId },
-        { index: 1, label: 'vault-state', name: 'Vault state', address: v.address, sats: v.buffer.sats },
-        { index: 2, label: 'vault-pusd', name: 'Vault PUSD', address: v.address, sats: 1_000n, tokenAmount: v.buffer.pusdCents - amount, tokenCategory: v.params.paryonTokenId },
+        { index: 1, label: 'paryon-price', name: 'Paryon price', sats: 1_000n },
+        { index: 2, label: 'vault-state', name: 'Vault state', address: v.address, sats: v.buffer.sats - 1_620n },
+        { index: 3, label: 'vault-pusd', name: 'Vault PUSD', address: v.address, sats: 1_000n, tokenAmount: v.buffer.pusdCents - amount, tokenCategory: v.params.paryonTokenId },
       ],
       checks: [
         { id: 'a', ok: true, text: 'Payee in allowlist' },
@@ -66,7 +67,7 @@ function signerExample(): BuiltTx {
         { id: 'c', ok: true, text: 'Budget 60.00 → 30.00' },
         { id: 'd', ok: true, text: `CR unchanged ${pct(v.health.crBps)}` },
       ],
-      feeSats: 1_340n,
+      feeSats: 1_620n,
     },
   };
 }
@@ -221,7 +222,7 @@ export function Landing() {
               <h2 id="signer-h">Read the transaction, not the button</h2>
               <p className="s-head-row__p">Every input and output gets a name from the vault, the allowlist or Paryon. An unknown address blocks signing.</p>
             </div>
-            <div className="ui s-window s-window--sign" role="img" aria-label="The signer view: pay 30.00 PUSD to Payroll — Ops; three inputs from the vault and the signer, three outputs to the payee and back to the vault; four checks passed">
+            <div className="ui s-window s-window--sign" role="img" aria-label="The signer view: pay 30.00 PUSD to Payroll — Ops; three inputs from the vault and Paryon's price contract, four outputs to the payee, the price contract and back to the vault; four checks passed">
               <div className="s-window__bar">
                 <span className="s-window__title">You are signing: Pay 30.00 PUSD to “Payroll — Ops”</span>
                 <span className="muted s-hide-sm">2 of 3 signatures needed · 1 collected (Treasurer)</span>

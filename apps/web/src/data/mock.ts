@@ -83,7 +83,7 @@ function policyFor(s: Seed): VaultPolicy {
     defendCrBps: 13_000,
     targetCrBps: 15_000,
     skimCrBps: 20_000,
-    keeperFeeMaxSats: 2_000,
+    keeperFeeMaxSats: 20_000,
     payeeRoot: hex(`root-${s.id}`, 20),
     perPaymentMax: 5_000n,  // PUSD cents (50.00 PUSD); see TODO in WALLET.md/README about the unit
     dailyBudget: 10_000n,   // 100.00 PUSD
@@ -159,23 +159,26 @@ function activityFor(id: string): ActivityItem[] {
 /* ---------------------------------------------------------------- decoded txs */
 
 function payTx(v: VaultView, payeeIndex: number, amount: bigint): BuiltTx {
+  // layout from contracts/Vault.cash, pay (PUSD): in 0 State | 1 PriceContract | 2 Pusd; out 0 payee | 1 PriceContract |
+  // 2 State | 3 Pusd change. The miner fee comes out of the vault's BCH, within keeperFeeMax: no wallet input.
   const payee = v.payees[payeeIndex];
-  const fee = 1_340n;
+  const fee = 1_620n;
+  const price = (index: number): DecodedIo => ({ index, label: 'paryon-price', name: 'Paryon price', sats: 1_000n, address: cashaddr('paryon-paryon-price', 'p') });
   const inputs: DecodedIo[] = [
     { index: 0, label: 'vault-state', name: 'Vault state', address: v.address, sats: v.buffer.sats,
       tokenCategory: v.params.stateCategory, nftCommitment: hex(`commit-${v.id}`, 52) },
-    { index: 1, label: 'vault-pusd', name: 'Vault PUSD', address: v.address, sats: DUST,
+    price(1),
+    { index: 2, label: 'vault-pusd', name: 'Vault PUSD', address: v.address, sats: DUST,
       tokenCategory: PUSD_CATEGORY, tokenAmount: v.buffer.pusdCents },
-    { index: 2, label: 'fee', name: 'Fee input', address: cashaddr('signer-fee', 'q'), sats: 10_000n },
   ];
   const outputs: DecodedIo[] = [
     { index: 0, label: 'payee', name: payee.label, address: payee.address, sats: DUST,
       tokenCategory: PUSD_CATEGORY, tokenAmount: amount },
-    { index: 1, label: 'vault-state', name: 'Vault state', address: v.address, sats: v.buffer.sats,
+    price(1),
+    { index: 2, label: 'vault-state', name: 'Vault state', address: v.address, sats: v.buffer.sats - fee,
       tokenCategory: v.params.stateCategory, nftCommitment: hex(`commit2-${v.id}`, 52) },
-    { index: 2, label: 'vault-pusd', name: 'Vault PUSD', address: v.address, sats: DUST,
+    { index: 3, label: 'vault-pusd', name: 'Vault PUSD', address: v.address, sats: DUST,
       tokenCategory: PUSD_CATEGORY, tokenAmount: v.buffer.pusdCents - amount },
-    { index: 3, label: 'change', name: 'Change', address: cashaddr('signer-fee', 'q'), sats: 10_000n - fee },
   ];
   const left = v.policy.dailyBudget - v.policy.spentToday;
   const checks: PolicyCheck[] = [
@@ -197,7 +200,7 @@ function unknownTx(v: VaultView): BuiltTx {
     tokenCategory: PUSD_CATEGORY, tokenAmount: 2_000n,
   });
   t.decoded.outputs.forEach((o, i) => (o.index = i));
-  t.decoded.outputs[3].tokenAmount = v.buffer.pusdCents - 5_000n;
+  t.decoded.outputs[4].tokenAmount = v.buffer.pusdCents - 5_000n;
   t.decoded.checks = [
     { id: 'allowlist', ok: false, text: 'Output 1 is not in the allowlist' },
     ...t.decoded.checks.slice(1),
@@ -223,7 +226,7 @@ function keeperTx(v: VaultView, action: KeeperAction): BuiltTx {
   if (action === 'defend' && delta > v.buffer.sats) delta = v.buffer.sats;
   const newColl = coll + delta;
   const after = crBps(newColl, price, debt);
-  const fee = 2_000n;
+  const fee = 8_200n; // miner fee: a Paryon manage tx is ~8 KB at 1 sat/byte
 
   const paryon = (index: number, label: DecodedIo['label'], name: string, sats: bigint): DecodedIo =>
     ({ index, label, name, sats, address: cashaddr(`paryon-${label}`, 'p') });
@@ -234,7 +237,6 @@ function keeperTx(v: VaultView, action: KeeperAction): BuiltTx {
     paryon(3, 'paryon-function', 'Paryon manage', 1_000n),
     { index: 4, label: 'vault-key', name: 'Vault key', address: v.address, sats: 1_000n, tokenCategory: v.params.loanKeyCategory },
     { index: 5, label: 'vault-state', name: 'Vault state', address: v.address, sats: v.buffer.sats, tokenCategory: v.params.stateCategory },
-    { index: 6, label: 'keeper', name: 'Keeper fee input', address: cashaddr('keeper-wallet', 'q'), sats: 20_000n },
   ];
   const outputs: DecodedIo[] = [
     paryon(0, 'paryon-price', 'Paryon price', 1_000n),
@@ -242,21 +244,21 @@ function keeperTx(v: VaultView, action: KeeperAction): BuiltTx {
     paryon(2, 'paryon-sidecar', 'Loan sidecar', 1_000n),
     paryon(3, 'paryon-function', 'Paryon manage', 1_000n),
     { index: 4, label: 'vault-key', name: 'Vault key', address: v.address, sats: 1_000n, tokenCategory: v.params.loanKeyCategory },
-    { index: 5, label: 'vault-state', name: 'Vault state', address: v.address, sats: v.buffer.sats - delta - fee, tokenCategory: v.params.stateCategory },
-    { index: 6, label: 'keeper', name: 'Keeper refund', address: cashaddr('keeper-wallet', 'q'), sats: 20_000n + fee - 600n },
+    { index: 5, label: 'vault-state', name: 'Vault state', address: v.address, sats: v.buffer.sats - delta - BigInt(p.keeperFeeMaxSats), tokenCategory: v.params.stateCategory },
+    { index: 6, label: 'keeper', name: 'Keeper reward', address: cashaddr('keeper-wallet', 'q'), sats: BigInt(p.keeperFeeMaxSats) - fee },
   ];
   const checks: PolicyCheck[] = action === 'defend'
     ? [
         { id: 'below', ok: true, text: `CR ${pct(cr)} is below defend ${pct(p.defendCrBps)}` },
         { id: 'after', ok: after >= p.targetCrBps || delta === v.buffer.sats, text: `CR after ${pct(after)} ≥ target ${pct(p.targetCrBps)}` },
         { id: 'debt', ok: true, text: 'Debt not raised' },
-        { id: 'fee', ok: fee <= BigInt(p.keeperFeeMaxSats), text: `Keeper fee ${fee.toLocaleString('en')} ≤ ${p.keeperFeeMaxSats.toLocaleString('en')} sats` },
+        { id: 'fee', ok: true, text: `Miner fee + keeper reward ${p.keeperFeeMaxSats.toLocaleString('en')} sats, the cap` },
       ]
     : [
         { id: 'above', ok: true, text: `CR ${pct(cr)} is above skim ${pct(p.skimCrBps)}` },
         { id: 'after', ok: after >= p.targetCrBps, text: `CR after ${pct(after)} ≥ target ${pct(p.targetCrBps)}` },
         { id: 'debt', ok: true, text: 'Debt unchanged' },
-        { id: 'fee', ok: true, text: `Keeper fee ${fee.toLocaleString('en')} ≤ ${p.keeperFeeMaxSats.toLocaleString('en')} sats` },
+        { id: 'fee', ok: true, text: `Miner fee + keeper reward ${p.keeperFeeMaxSats.toLocaleString('en')} sats, the cap` },
       ];
   const title = action === 'defend'
     ? `Defend ${v.name}: +${bch(delta)} BCH collateral, CR ${pct(cr)} → ${pct(after)}`
@@ -265,7 +267,7 @@ function keeperTx(v: VaultView, action: KeeperAction): BuiltTx {
     txHex: '02000000' + hex(`keeper-${v.id}-${action}-${coll}`, 260),
     sourceOutputs: [],
     summary: title,
-    decoded: { title, inputs, outputs, checks, feeSats: 600n },
+    decoded: { title, inputs, outputs, checks, feeSats: fee },
   };
 }
 
@@ -423,6 +425,11 @@ export function createMockSource(): DataSource {
       return req;
     },
     async getSignRequest(id) { return requests.get(id) ?? null; },
+    async prepareSignature(id) {
+      const r = requests.get(id);
+      if (!r) throw new Error('Request not found');
+      return r.built;
+    },
     async addSignature(id, slotIndex) {
       const r = requests.get(id);
       if (!r) throw new Error('Request not found');

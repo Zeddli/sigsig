@@ -34,8 +34,11 @@ export function Sign() {
   const sign = useMutation({
     mutationFn: async (slot: number) => {
       const s = await getSource();
-      let signed = r!.built.txHex;
-      if (wallet?.available) signed = (await wallet.signTransaction(r!.built)).signedTxHex;
+      // the wallet signs a copy with a placeholder in this signer's slot only; the source pulls the signature out
+      const mine = await s.prepareSignature(r!.id, slot);
+      let signed = mine.txHex;
+      if (wallet?.available) signed = (await wallet.signTransaction(mine)).signedTxHex;
+      else if (s.kind !== 'mock') throw new Error('Connect a signer wallet to sign');
       return s.addSignature(r!.id, slot, signed);
     },
     onSuccess: (next) => qc.setQueryData(qk.request(requestId), next),

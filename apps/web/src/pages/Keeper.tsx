@@ -23,7 +23,7 @@ function actionFor(v: VaultSummary): { action: KeeperAction | null; reason: stri
 interface Preview { vault: VaultSummary; action: KeeperAction; tx?: BuiltTx; error?: string }
 
 export function Keeper() {
-  const { network, wallet } = useWallet();
+  const { network, address } = useWallet();
   const q = useVaults(network);
   const qc = useQueryClient();
   const [params] = useSearchParams();
@@ -34,7 +34,7 @@ export function Keeper() {
   const open = async (vault: VaultSummary, action: KeeperAction) => {
     setPreview({ vault, action });
     try {
-      const tx = await (await getSource()).buildKeeperTx(vault.id, action);
+      const tx = await (await getSource()).buildKeeperTx(vault.id, action, address ?? undefined);
       setPreview({ vault, action, tx });
     } catch (e) {
       setPreview({ vault, action, error: e instanceof Error ? e.message : String(e) });
@@ -44,10 +44,8 @@ export function Keeper() {
   const send = useMutation({
     mutationFn: async (p: Preview) => {
       const s = await getSource();
-      let hex = p.tx!.txHex;
-      if (wallet?.available) hex = (await wallet.signTransaction(p.tx!)).signedTxHex;
-      else if (s.kind !== 'mock') throw new Error('Connect a wallet to pay the keeper fee');
-      return { ...(await s.broadcast(hex)), vaultId: p.vault.id, title: p.tx!.decoded.title };
+      // defend and skim need no signature: the vault pays the miner fee within its cap
+      return { ...(await s.broadcast(p.tx!.txHex)), vaultId: p.vault.id, title: p.tx!.decoded.title };
     },
     onSuccess: (r) => {
       setSent((m) => ({ ...m, [r.vaultId]: { txid: r.txid, title: r.title } }));
@@ -61,7 +59,7 @@ export function Keeper() {
     <div className="wrap s-page">
       <PageHead
         title="Keeper"
-        sub={<p className="measure">Any wallet can defend or skim a vault. The covenant accepts a keeper transaction only when it makes the loan safer, and refunds its fee up to the vault's cap.</p>}
+        sub={<p className="measure">Anyone can defend or skim a vault, with no wallet and no key. The covenant accepts a keeper transaction only when it makes the loan safer, and pays the miner fee and a reward from the vault, up to its cap.</p>}
       />
       <ErrorLine error={q.error} />
       {q.isSuccess && q.data.length === 0 ? (
@@ -108,7 +106,7 @@ export function Keeper() {
         title={preview ? `${preview.action === 'defend' ? 'Defend' : 'Skim'} ${preview.vault.name}` : ''}
         footer={preview?.tx ? (
           <div className="s-sheet__actions">
-            <p className="t-small">You pay ~600 sats; the vault repays up to {preview.vault.policy.keeperFeeMaxSats.toLocaleString('en').replace(/,/g, ' ')} sats.</p>
+            <p className="t-small">The vault pays the miner fee (about {preview.tx.decoded.feeSats.toLocaleString('en').replace(/,/g, ' ')} sats) out of its {preview.vault.policy.keeperFeeMaxSats.toLocaleString('en').replace(/,/g, ' ')}-sat cap; {address ? 'the rest goes to your wallet' : 'connect a wallet to receive the rest, or it goes to the miner'}. You sign nothing.</p>
             <ErrorLine error={send.error} />
             <div className="btn-row">
               <button type="button" className="btn btn--primary" disabled={send.isPending} onClick={() => send.mutate(preview)}>

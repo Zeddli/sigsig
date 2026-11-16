@@ -47,11 +47,13 @@ export class WalletError extends Error {
   }
 }
 
-/** Default signing map for a decoded tx: the signer's receive key #0 signs its own inputs and, for a pay, the
- *  vault-state input (a covenant input whose unlocking bytecode carries a 65-byte placeholder signature). */
+/** Default signing map: the signer's receive key #0 signs every input whose unlocking bytecode carries the
+ *  65-byte placeholder. For a pay that is the vault-state input (0) and, for PUSD, the vault-PUSD input (2):
+ *  both run Vault.pay with the same arguments, and Cashonize throws on a placeholder input missing from
+ *  inputPaths. Only input 0's signature is checked by the covenant (WALLET.md). Funding inputs (fee/keeper) too. */
 export function defaultInputPaths(tx: BuiltTx): InputPath[] {
   const isPay = tx.decoded.outputs.some((o) => o.label === 'payee');
   return tx.decoded.inputs
-    .filter((i) => i.label === 'fee' || i.label === 'keeper' || (isPay && i.label === 'vault-state'))
+    .filter((i) => i.label === 'fee' || i.label === 'keeper' || (isPay && (i.label === 'vault-state' || i.label === 'vault-pusd')))
     .map((i) => [i.index, 'receive', 0] as InputPath);
 }

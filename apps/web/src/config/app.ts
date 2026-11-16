@@ -3,12 +3,14 @@ import type { NetworkName } from '@sigsig/core';
 /**
  * App configuration. ONE flag picks the data source:
  *   VITE_DATA_SOURCE=mock      realistic fixed data, no network (the default; the demo and the prerender use it)
- *   VITE_DATA_SOURCE=electrum  the live reader from @sigsig/core (packages/core reader.ts, SDK team)
+ *   VITE_DATA_SOURCE=live      @sigsig/core over Electrum (src/data/live.ts); needs /deployments/<net>.json and
+ *                              /vaults/<net>.json in public/ (see public/vaults/README.txt)
+ * Keep mock as the default until the chipnet deployment is published.
  */
-export type DataSourceKind = 'mock' | 'electrum';
+export type DataSourceKind = 'mock' | 'live';
 
-export const DATA_SOURCE: DataSourceKind =
-  (import.meta.env?.VITE_DATA_SOURCE as DataSourceKind | undefined) === 'electrum' ? 'electrum' : 'mock';
+const flag = import.meta.env?.VITE_DATA_SOURCE as string | undefined;
+export const DATA_SOURCE: DataSourceKind = flag === 'live' || flag === 'electrum' ? 'live' : 'mock';
 
 export const DEFAULT_NETWORK: Exclude<NetworkName, 'mocknet'> =
   (import.meta.env?.VITE_NETWORK as 'chipnet' | 'mainnet' | undefined) ?? 'chipnet';

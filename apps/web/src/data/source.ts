@@ -1,8 +1,8 @@
 /**
  * The data layer. Every screen reads through `DataSource`; nothing in a page talks to Electrum or a
  * builder directly. Two implementations:
- *   - mock.ts      realistic fixed data (default)
- *   - electrum.ts  the live reader + tx builders from @sigsig/core (SDK team plugs it in)
+ *   - mock.ts  realistic fixed data (default until the chipnet deployment is published)
+ *   - live.ts  @sigsig/core over Electrum: ElectrumVaultReader + the vault tx builders
  * Pick one with VITE_DATA_SOURCE (src/config/app.ts). Shapes follow packages/core/src/types.ts.
  */
 import type {
@@ -115,7 +115,7 @@ export type SetupStep = 'loan-key' | 'policy' | 'borrow';
 export interface BroadcastResult { txid: string; }
 
 export interface DataSource {
-  readonly kind: 'mock' | 'electrum';
+  readonly kind: 'mock' | 'electrum';  // 'electrum' = live.ts
   listVaults(network: Net): Promise<VaultSummary[]>;
   getVault(id: string): Promise<VaultView | null>;
   getActivity(id: string): Promise<ActivityItem[]>;
@@ -126,12 +126,14 @@ export interface DataSource {
   /** Build the pay tx (unsigned) and register it as a request other signers can open. */
   createPayRequest(draft: PayDraft): Promise<SignRequest>;
   getSignRequest(id: string): Promise<SignRequest | null>;
+  /** The tx one signer's wallet signs: the request with a placeholder in that signer's slot only (0-based). */
+  prepareSignature(id: string, slotIndex: number): Promise<BuiltTx>;
   /** Store a signer's signed tx; returns the updated request (combines signatures per slot). */
   addSignature(id: string, slotIndex: number, signedTxHex: string): Promise<SignRequest>;
   rejectRequest(id: string): Promise<SignRequest>;
 
   /** Build a keeper tx; rejects with a covenant-rule message when the covenant would refuse it. */
-  buildKeeperTx(vaultId: string, action: KeeperAction): Promise<BuiltTx>;
+  buildKeeperTx(vaultId: string, action: KeeperAction, rewardTo?: string): Promise<BuiltTx>;
   /** The three setup txs of a new vault, one per stepper step. */
   buildSetupTx(step: SetupStep, draft: NewVaultDraft): Promise<BuiltTx>;
   broadcast(txHex: string): Promise<BroadcastResult>;
@@ -142,9 +144,9 @@ let current: DataSource | null = null;
 /** The one place the source is chosen. */
 export async function getSource(): Promise<DataSource> {
   if (current) return current;
-  if (DATA_SOURCE === 'electrum') {
-    const { createElectrumSource } = await import('./electrum');
-    current = createElectrumSource();
+  if (DATA_SOURCE === 'live') {
+    const { createLiveSource } = await import('./live');
+    current = createLiveSource();
   } else {
     const { createMockSource } = await import('./mock');
     current = createMockSource();
